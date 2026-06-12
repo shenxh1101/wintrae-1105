@@ -2,23 +2,40 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Play, Pause, RotateCcw, ChevronLeft, Gift, AlertTriangle, 
-  Check, Star, Trophy, X
+  Check, Trophy, X, Camera, User, Plus
 } from 'lucide-react';
 import { useTrainingStore } from '../stores/useTrainingStore';
 import { usePetStore } from '../stores/usePetStore';
+import type { PhotoRecord } from '../types';
 import Rating from '../components/Rating';
 import { motion, AnimatePresence } from 'framer-motion';
 
 type TrainingPhase = 'ready' | 'running' | 'paused' | 'finished';
 
+const defaultPhotos: PhotoRecord[] = [
+  {
+    id: 'demo-before',
+    url: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20puppy%20training%20before%20calm%20sitting%20warm%20lighting&image_size=square',
+    label: 'before',
+    caption: '训练前',
+  },
+  {
+    id: 'demo-after',
+    url: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20puppy%20training%20success%20happy%20reward%20treat%20warm&image_size=square',
+    label: 'after',
+    caption: '训练后',
+  },
+];
+
 const TrainingPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getCourseById, addRecord } = useTrainingStore();
-  const { getCurrentPet } = usePetStore();
+  const { getCurrentPet, familyMembers, currentMemberId, getCurrentMember } = usePetStore();
   
   const course = getCourseById(id || '');
   const currentPet = getCurrentPet();
+  const currentMember = getCurrentMember();
   
   const [phase, setPhase] = useState<TrainingPhase>('ready');
   const [seconds, setSeconds] = useState(0);
@@ -30,6 +47,9 @@ const TrainingPage = () => {
   const [behaviorText, setBehaviorText] = useState('');
   const [behaviorList, setBehaviorList] = useState<string[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
+  const [photos, setPhotos] = useState<PhotoRecord[]>(defaultPhotos);
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [selectedMemberId, setSelectedMemberId] = useState(currentMemberId);
   
   const timerRef = useRef<number | null>(null);
 
@@ -97,6 +117,21 @@ const TrainingPage = () => {
     setBehaviorList(behaviorList.filter((_, i) => i !== index));
   };
 
+  const handleAddPhoto = (label: 'before' | 'after' | 'progress') => {
+    const captions = { before: '训练前', after: '训练后', progress: '阶段性' };
+    const newPhoto: PhotoRecord = {
+      id: `photo-${Date.now()}-${Math.random()}`,
+      url: `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20pet%20training%20${label}%20${Date.now()}&image_size=square`,
+      label,
+      caption: captions[label],
+    };
+    setPhotos([...photos, newPhoto]);
+  };
+
+  const handleRemovePhoto = (photoId: string) => {
+    setPhotos(photos.filter(p => p.id !== photoId));
+  };
+
   const handleComplete = () => {
     if (!course || !currentPet) return;
     
@@ -108,6 +143,8 @@ const TrainingPage = () => {
       durationSeconds: seconds,
       rating,
       notes,
+      photos,
+      completedBy: selectedMemberId,
       rewards: [
         {
           id: `reward-${Date.now()}`,
@@ -139,6 +176,8 @@ const TrainingPage = () => {
     }
   };
 
+  const selectedMember = familyMembers.find(m => m.id === selectedMemberId);
+
   if (!course || !currentPet) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -146,6 +185,18 @@ const TrainingPage = () => {
       </div>
     );
   }
+
+  const photoLabelColors = {
+    before: 'bg-blue-500',
+    after: 'bg-green-500',
+    progress: 'bg-purple-500',
+  };
+
+  const photoLabelText = {
+    before: '训练前',
+    after: '训练后',
+    progress: '阶段性',
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 text-white">
@@ -158,7 +209,16 @@ const TrainingPage = () => {
           <ChevronLeft size={22} />
         </button>
         <h1 className="text-lg font-semibold">{course.title}</h1>
-        <div className="w-10" />
+        <button 
+          onClick={() => setShowMemberModal(true)}
+          className="w-10 h-10 bg-white/20 backdrop-blur rounded-full flex items-center justify-center overflow-hidden"
+        >
+          {selectedMember?.avatar ? (
+            <img src={selectedMember.avatar} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <User size={18} />
+          )}
+        </button>
       </div>
 
       <AnimatePresence mode="wait">
@@ -189,9 +249,21 @@ const TrainingPage = () => {
                 <span className="text-white/70">预计时长</span>
                 <span className="font-medium">{course.durationMin}分钟</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-sm mb-4">
                 <span className="text-white/70">训练步骤</span>
                 <span className="font-medium">{course.steps.length}步</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-white/70">完成人</span>
+                <button 
+                  onClick={() => setShowMemberModal(true)}
+                  className="flex items-center gap-1 font-medium"
+                >
+                  <span style={{ color: selectedMember?.color }}>
+                    {selectedMember?.name || '选择成员'}
+                  </span>
+                  <ChevronLeft size={14} className="rotate-180" />
+                </button>
               </div>
             </div>
 
@@ -238,7 +310,7 @@ const TrainingPage = () => {
                     animate={{ scale: 1.5, opacity: 0 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.8 }}
-                    className="absolute inset-0 flex items-center justify-center"
+                    className="absolute inset-0 flex items-center justify-center pointer-events-none"
                   >
                     <Gift size={60} className="text-yellow-300" />
                   </motion.div>
@@ -278,7 +350,6 @@ const TrainingPage = () => {
 
             {/* 操作按钮 */}
             <div className="flex items-center gap-6 mb-6">
-              {/* 重置 */}
               <button
                 onClick={handleReset}
                 className="w-14 h-14 rounded-full bg-white/10 backdrop-blur flex items-center justify-center active:scale-95 transition-transform"
@@ -286,7 +357,6 @@ const TrainingPage = () => {
                 <RotateCcw size={24} />
               </button>
               
-              {/* 播放/暂停 */}
               <button
                 onClick={phase === 'running' ? handlePause : handleResume}
                 className="w-20 h-20 rounded-full bg-white text-primary-600 flex items-center justify-center shadow-lg active:scale-95 transition-transform"
@@ -298,7 +368,6 @@ const TrainingPage = () => {
                 )}
               </button>
               
-              {/* 奖励 */}
               <button
                 onClick={handleReward}
                 className="w-14 h-14 rounded-full bg-yellow-400/90 text-yellow-800 flex items-center justify-center shadow-lg active:scale-95 transition-transform relative"
@@ -361,6 +430,9 @@ const TrainingPage = () => {
               </motion.div>
               <h2 className="text-3xl font-bold mb-2">太棒了！</h2>
               <p className="text-white/70">训练完成，{currentPet.name}又进步了</p>
+              <p className="text-white/60 text-sm mt-1" style={{ color: selectedMember?.color }}>
+                —— {selectedMember?.name || '未选择成员'}完成
+              </p>
             </motion.div>
 
             {/* 统计 */}
@@ -386,11 +458,55 @@ const TrainingPage = () => {
               </div>
             </motion.div>
 
-            {/* 评分 */}
+            {/* 照片记录 */}
             <motion.div
               initial={{ y: 30, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.4 }}
+              className="bg-white/10 backdrop-blur rounded-2xl p-5 mb-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-medium">📸 照片记录</h3>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {(['before', 'progress', 'after'] as const).map((label) => (
+                  <button
+                    key={label}
+                    onClick={() => handleAddPhoto(label)}
+                    className="aspect-square bg-white/10 rounded-xl flex flex-col items-center justify-center gap-1 border-2 border-dashed border-white/20 hover:bg-white/20 transition-colors"
+                  >
+                    <Plus size={20} />
+                    <span className="text-xs">{photoLabelText[label]}</span>
+                  </button>
+                ))}
+              </div>
+
+              {photos.length > 0 && (
+                <div className="grid grid-cols-3 gap-2">
+                  {photos.map((photo) => (
+                    <div key={photo.id} className="relative aspect-square rounded-xl overflow-hidden group">
+                      <img src={photo.url} alt="" className="w-full h-full object-cover" />
+                      <div className={`absolute top-1 left-1 px-2 py-0.5 rounded-full text-xs text-white ${photoLabelColors[photo.label]}`}>
+                        {photoLabelText[photo.label]}
+                      </div>
+                      <button
+                        onClick={() => handleRemovePhoto(photo.id)}
+                        className="absolute top-1 right-1 w-5 h-5 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+
+            {/* 评分 */}
+            <motion.div
+              initial={{ y: 30, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.45 }}
               className="bg-white/10 backdrop-blur rounded-2xl p-5 mb-6"
             >
               <h3 className="font-medium mb-3">训练效果评分</h3>
@@ -467,10 +583,10 @@ const TrainingPage = () => {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="w-full bg-white rounded-t-3xl p-6 safe-area-bottom"
+              className="w-full bg-white rounded-t-3xl p-6 safe-area-bottom text-neutral-800"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-lg font-bold text-neutral-800 mb-4">记录异常行为</h3>
+              <h3 className="text-lg font-bold mb-4">记录异常行为</h3>
               
               <div className="flex gap-2 mb-4">
                 <input
@@ -539,6 +655,77 @@ const TrainingPage = () => {
                 className="w-full py-3 bg-neutral-100 text-neutral-600 rounded-xl font-medium"
               >
                 完成
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 成员选择弹窗 */}
+      <AnimatePresence>
+        {showMemberModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-end z-50"
+            onClick={() => setShowMemberModal(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="w-full bg-white rounded-t-3xl p-6 safe-area-bottom text-neutral-800 max-h-[70vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-bold mb-4">选择完成人</h3>
+              
+              <div className="space-y-2 mb-4">
+                {familyMembers.map((member) => (
+                  <button
+                    key={member.id}
+                    onClick={() => {
+                      setSelectedMemberId(member.id);
+                      setShowMemberModal(false);
+                    }}
+                    className={`w-full flex items-center gap-3 p-3 rounded-xl transition-colors ${
+                      selectedMemberId === member.id
+                        ? 'bg-primary-50 border-2 border-primary-300'
+                        : 'bg-neutral-50 border-2 border-transparent hover:bg-neutral-100'
+                    }`}
+                  >
+                    <div 
+                      className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white"
+                      style={{ backgroundColor: member.color }}
+                    >
+                      {member.avatar ? (
+                        <img src={member.avatar} alt="" className="w-full h-full rounded-full object-cover" />
+                      ) : (
+                        member.name.charAt(0)
+                      )}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-medium">{member.name}</p>
+                      <p className="text-sm text-neutral-500">
+                        {member.role === 'owner' ? '主人' : member.role === 'trainer' ? '训练师' : '观察者'}
+                      </p>
+                    </div>
+                    {selectedMemberId === member.id && (
+                      <div className="w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center">
+                        <Check size={14} className="text-white" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => navigate('/family')}
+                className="w-full py-3 bg-neutral-100 text-neutral-600 rounded-xl font-medium flex items-center justify-center gap-2"
+              >
+                <Plus size={18} />
+                管理家庭成员
               </button>
             </motion.div>
           </motion.div>

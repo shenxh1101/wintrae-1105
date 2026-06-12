@@ -1,18 +1,74 @@
-import { useState } from 'react';
-import { Plus, Bell, Syringe, Bug, Calendar, ChevronRight, Trash2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Bell, Syringe, Bug, Calendar, ChevronRight, Trash2, X, Check } from 'lucide-react';
 import { useReminderStore } from '../stores/useReminderStore';
 import { usePetStore } from '../stores/usePetStore';
 import Header from '../components/Header';
 import { motion, AnimatePresence } from 'framer-motion';
 
 type FilterType = 'all' | 'training' | 'vaccine' | 'deworm' | 'custom';
+type ReminderType = 'training' | 'vaccine' | 'deworm' | 'custom';
+type RepeatType = 'daily' | 'weekly' | 'monthly' | 'once';
 
 const RemindersPage = () => {
-  const { reminders, toggleReminder, deleteReminder } = useReminderStore();
+  const { reminders, toggleReminder, deleteReminder, addReminder } = useReminderStore();
   const { pets, getCurrentPet } = usePetStore();
   const currentPet = getCurrentPet();
   
   const [filter, setFilter] = useState<FilterType>('all');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newReminderType, setNewReminderType] = useState<ReminderType>('training');
+  const [newReminderPetId, setNewReminderPetId] = useState<string>('');
+  const [newReminderTitle, setNewReminderTitle] = useState<string>('');
+  const [newReminderTime, setNewReminderTime] = useState<string>('09:00');
+  const [newReminderRepeat, setNewReminderRepeat] = useState<RepeatType>('daily');
+  const [newReminderNote, setNewReminderNote] = useState<string>('');
+
+  useEffect(() => {
+    if (showAddModal && currentPet) {
+      setNewReminderPetId(currentPet.id);
+    }
+  }, [showAddModal, currentPet]);
+
+  useEffect(() => {
+    const defaultTitles: Record<ReminderType, string> = {
+      training: '每日训练提醒',
+      vaccine: '疫苗接种提醒',
+      deworm: '驱虫提醒',
+      custom: '自定义提醒',
+    };
+    setNewReminderTitle(defaultTitles[newReminderType]);
+  }, [newReminderType]);
+
+  const resetForm = () => {
+    setNewReminderType('training');
+    setNewReminderPetId(currentPet?.id || '');
+    setNewReminderTitle('每日训练提醒');
+    setNewReminderTime('09:00');
+    setNewReminderRepeat('daily');
+    setNewReminderNote('');
+  };
+
+  const handleOpenModal = () => {
+    resetForm();
+    setShowAddModal(true);
+  };
+
+  const handleConfirmAdd = () => {
+    if (!newReminderPetId || !newReminderTitle || !newReminderTime) return;
+
+    addReminder({
+      petId: newReminderPetId,
+      type: newReminderType,
+      title: newReminderTitle,
+      time: newReminderTime,
+      repeat: newReminderRepeat,
+      enabled: true,
+      note: newReminderNote || undefined,
+    });
+
+    setShowAddModal(false);
+    resetForm();
+  };
 
   const filteredReminders = reminders.filter(r => {
     if (filter === 'all') return true;
@@ -25,6 +81,20 @@ const RemindersPage = () => {
     { id: 'vaccine', label: '疫苗', icon: Syringe },
     { id: 'deworm', label: '驱虫', icon: Bug },
     { id: 'custom', label: '自定义', icon: Bell },
+  ];
+
+  const typeTabs: { id: ReminderType; label: string; icon: typeof Bell }[] = [
+    { id: 'training', label: '训练', icon: Calendar },
+    { id: 'vaccine', label: '疫苗', icon: Syringe },
+    { id: 'deworm', label: '驱虫', icon: Bug },
+    { id: 'custom', label: '自定义', icon: Bell },
+  ];
+
+  const repeatOptions: { id: RepeatType; label: string }[] = [
+    { id: 'daily', label: '每天' },
+    { id: 'weekly', label: '每周' },
+    { id: 'monthly', label: '每月' },
+    { id: 'once', label: '仅一次' },
   ];
 
   const getTypeIcon = (type: string) => {
@@ -53,6 +123,7 @@ const RemindersPage = () => {
     switch (repeat) {
       case 'daily': return '每天';
       case 'weekly': return '每周';
+      case 'monthly': return '每月';
       case 'once': return '仅一次';
       default: return repeat;
     }
@@ -63,7 +134,10 @@ const RemindersPage = () => {
       <Header 
         title="提醒中心" 
         rightAction={
-          <button className="p-2 -mr-2 text-primary-500">
+          <button 
+            onClick={handleOpenModal}
+            className="p-2 -mr-2 text-primary-500"
+          >
             <Plus size={22} />
           </button>
         }
@@ -180,7 +254,10 @@ const RemindersPage = () => {
                 <Bell size={32} className="text-neutral-300" />
               </div>
               <p className="text-neutral-500">暂无提醒</p>
-              <button className="mt-3 text-primary-500 font-medium text-sm">
+              <button 
+                onClick={handleOpenModal}
+                className="mt-3 text-primary-500 font-medium text-sm"
+              >
                 + 添加新提醒
               </button>
             </div>
@@ -210,6 +287,149 @@ const RemindersPage = () => {
           </div>
         )}
       </div>
+
+      {/* 新建提醒弹窗 */}
+      <AnimatePresence>
+        {showAddModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-end z-50"
+            onClick={() => setShowAddModal(false)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="w-full bg-white rounded-t-3xl p-6 safe-area-bottom text-neutral-800 max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold">新建提醒</h3>
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-500"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* 类型选择 */}
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">类型</label>
+                <div className="flex gap-2">
+                  {typeTabs.map((tab) => {
+                    const Icon = tab.icon;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => setNewReminderType(tab.id)}
+                        className={`flex-1 flex flex-col items-center gap-1.5 py-3 rounded-xl transition-all ${
+                          newReminderType === tab.id
+                            ? 'bg-primary-500 text-white shadow-soft'
+                            : 'bg-neutral-50 text-neutral-600 hover:bg-neutral-100'
+                        }`}
+                      >
+                        <Icon size={18} />
+                        <span className="text-xs font-medium">{tab.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 宠物选择 */}
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">选择宠物</label>
+                <select
+                  value={newReminderPetId}
+                  onChange={(e) => setNewReminderPetId(e.target.value)}
+                  className="w-full px-4 py-3 bg-neutral-50 rounded-xl border-2 border-neutral-100 focus:border-primary-300 focus:outline-none"
+                >
+                  {pets.map((pet) => (
+                    <option key={pet.id} value={pet.id}>
+                      {pet.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 标题输入 */}
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">标题</label>
+                <input
+                  type="text"
+                  value={newReminderTitle}
+                  onChange={(e) => setNewReminderTitle(e.target.value)}
+                  placeholder="请输入提醒标题"
+                  className="w-full px-4 py-3 bg-neutral-50 rounded-xl border-2 border-neutral-100 focus:border-primary-300 focus:outline-none"
+                />
+              </div>
+
+              {/* 时间选择 */}
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">时间</label>
+                <input
+                  type="time"
+                  value={newReminderTime}
+                  onChange={(e) => setNewReminderTime(e.target.value)}
+                  className="w-full px-4 py-3 bg-neutral-50 rounded-xl border-2 border-neutral-100 focus:border-primary-300 focus:outline-none"
+                />
+              </div>
+
+              {/* 重复周期 */}
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">重复周期</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {repeatOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setNewReminderRepeat(option.id)}
+                      className={`py-2.5 rounded-xl text-sm font-medium transition-all ${
+                        newReminderRepeat === option.id
+                          ? 'bg-primary-500 text-white shadow-soft'
+                          : 'bg-neutral-50 text-neutral-600 hover:bg-neutral-100'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 备注输入 */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-neutral-700 mb-2">备注（选填）</label>
+                <input
+                  type="text"
+                  value={newReminderNote}
+                  onChange={(e) => setNewReminderNote(e.target.value)}
+                  placeholder="添加备注信息..."
+                  className="w-full px-4 py-3 bg-neutral-50 rounded-xl border-2 border-neutral-100 focus:border-primary-300 focus:outline-none"
+                />
+              </div>
+
+              {/* 取消/确认按钮 */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 py-3.5 bg-neutral-100 text-neutral-600 rounded-xl font-semibold active:scale-[0.98] transition-transform"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmAdd}
+                  className="flex-1 py-3.5 bg-primary-500 text-white rounded-xl font-semibold active:scale-[0.98] transition-transform"
+                >
+                  确认
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

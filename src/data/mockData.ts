@@ -265,6 +265,8 @@ const generateMockRecords = (): TrainingRecord[] => {
           isAbnormal: true,
         },
       ] : [],
+      photos: [],
+      completedBy: 'member-1',
       createdAt: dateStr,
     });
   }

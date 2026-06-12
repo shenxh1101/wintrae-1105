@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { 
-  BookOpen, Calendar, PawPrint, TrendingUp, Flame, Target, Clock, ChevronRight, Sparkles
+  BookOpen, Calendar, PawPrint, TrendingUp, Flame, Target, Clock, ChevronRight, Sparkles, Star, Award
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -10,16 +10,19 @@ import PetCard from '../components/PetCard';
 import CourseCard from '../components/CourseCard';
 import ProgressBar from '../components/ProgressBar';
 import { motion } from 'framer-motion';
+import type { TrainingGoal } from '../types';
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const { pets, currentPetId, setCurrentPet, getCurrentPet } = usePetStore();
-  const { courses, getRecordsForPet, getWeeklyStats, getRecordsForPetByDate } = useTrainingStore();
+  const { pets, currentPetId, setCurrentPet, getCurrentPet, getGoalsForPet } = usePetStore();
+  const { courses, getRecordsForPet, getWeeklyStats, getRecordsForPetByDate, getWeeklySuggestions } = useTrainingStore();
   const currentPet = getCurrentPet();
   const today = format(new Date(), 'yyyy-MM-dd');
   
   const todayRecords = currentPet ? getRecordsForPetByDate(currentPet.id, today) : [];
   const weeklyStats = currentPet ? getWeeklyStats(currentPet.id) : null;
+  const petGoals = currentPet ? getGoalsForPet(currentPet.id) : [];
+  const allRecords = currentPet ? getRecordsForPet(currentPet.id) : [];
   
   const todayCourseIds = new Set(todayRecords.map(r => r.courseId));
   const todayTarget = 3;
@@ -41,6 +44,46 @@ const HomePage = () => {
     if (hour < 14) return '中午好';
     if (hour < 18) return '下午好';
     return '晚上好';
+  };
+
+  const getGoalProgress = (goal: TrainingGoal) => {
+    let currentValue = 0;
+    let targetValue = goal.targetValue;
+    let displayType = '';
+    let icon: typeof Target = Target;
+    let iconColor = 'bg-primary-100 text-primary-500';
+
+    if (goal.goalType === 'frequency') {
+      currentValue = weeklyStats?.totalTrainings || 0;
+      displayType = '训练次数';
+      icon = Calendar;
+      iconColor = 'bg-orange-100 text-orange-500';
+    } else if (goal.goalType === 'mastery' && goal.courseId) {
+      const courseRecords = allRecords.filter(r => r.courseId === goal.courseId);
+      currentValue = courseRecords.length > 0
+        ? Math.round((courseRecords.reduce((sum, r) => sum + r.rating, 0) / courseRecords.length) * 10) / 10
+        : 0;
+      const course = courses.find(c => c.id === goal.courseId);
+      displayType = course ? course.title : '重点课程';
+      icon = Award;
+      iconColor = 'bg-green-100 text-green-500';
+    } else if (goal.goalType === 'mastery') {
+      currentValue = weeklyStats?.averageRating || 0;
+      displayType = '平均评分';
+      icon = Star;
+      iconColor = 'bg-yellow-100 text-yellow-500';
+    }
+
+    const progress = Math.min(100, Math.max(0, (currentValue / Math.max(1, targetValue)) * 100));
+
+    return {
+      currentValue,
+      targetValue,
+      progress,
+      displayType,
+      icon,
+      iconColor,
+    };
   };
 
   return (
@@ -216,6 +259,74 @@ const HomePage = () => {
               </p>
               <p className="text-xs text-neutral-500 mt-1">总分钟</p>
             </div>
+          </div>
+        </motion.div>
+
+        {/* 训练目标进度 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.45 }}
+          className="mt-6"
+        >
+          <h2 className="text-lg font-bold text-neutral-800 mb-3">训练目标进度</h2>
+          <div className="bg-white rounded-2xl p-5 shadow-card">
+            {petGoals.length > 0 ? (
+              <div className="space-y-4">
+                {petGoals.map((goal, index) => {
+                  const { currentValue, targetValue, progress, displayType, icon: GoalIcon, iconColor } = getGoalProgress(goal);
+                  return (
+                    <motion.div
+                      key={goal.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.45 + index * 0.05 }}
+                    >
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${iconColor}`}>
+                          <GoalIcon size={18} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-neutral-800 text-sm truncate">
+                            {displayType}
+                          </p>
+                          <p className="text-xs text-neutral-500 truncate">
+                            {goal.description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="ml-12">
+                        <ProgressBar value={progress} size="sm" />
+                        <div className="flex justify-between items-center mt-1.5">
+                          <p className="text-xs text-neutral-500">
+                            {currentValue}/{targetValue}
+                            {goal.goalType === 'mastery' ? ' 分' : ' 次'}
+                          </p>
+                          <p className="text-xs font-medium text-primary-600">
+                            {Math.round(progress)}%
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <div className="w-14 h-14 mx-auto rounded-full bg-neutral-100 flex items-center justify-center mb-3">
+                  <Target size={28} className="text-neutral-400" />
+                </div>
+                <p className="text-neutral-500 text-sm">还没有设置训练目标</p>
+                <p className="text-neutral-400 text-xs mt-1">去宠物档案设置吧</p>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => navigate('/pets')}
+                  className="mt-4 px-5 py-2 bg-primary-500 text-white text-sm font-medium rounded-full hover:bg-primary-600 transition-colors"
+                >
+                  去设置目标
+                </motion.button>
+              </div>
+            )}
           </div>
         </motion.div>
 

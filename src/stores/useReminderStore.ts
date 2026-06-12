@@ -11,6 +11,7 @@ interface ReminderStore {
   addReminder: (reminder: Omit<Reminder, 'id'>) => void;
   updateReminder: (id: string, updates: Partial<Reminder>) => void;
   deleteReminder: (id: string) => void;
+  deleteRemindersForPet: (petId: string) => void;
   toggleReminder: (id: string) => void;
 }
 
@@ -52,6 +53,12 @@ export const useReminderStore = create<ReminderStore>()(
       deleteReminder: (id) => {
         set((state) => ({
           reminders: state.reminders.filter((r) => r.id !== id),
+        }));
+      },
+
+      deleteRemindersForPet: (petId) => {
+        set((state) => ({
+          reminders: state.reminders.filter((r) => r.petId !== petId),
         }));
       },
 

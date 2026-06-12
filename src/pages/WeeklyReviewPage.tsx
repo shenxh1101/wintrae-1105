@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { 
   Trophy, TrendingUp, Target, Flame, Clock, Star, 
-  ChevronLeft, ChevronRight, Lightbulb, Calendar, Award
+  ChevronLeft, ChevronRight, Lightbulb, Calendar, Award,
+  AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -9,51 +10,41 @@ import { usePetStore } from '../stores/usePetStore';
 import { useTrainingStore } from '../stores/useTrainingStore';
 import { motion } from 'framer-motion';
 
+const iconMap: Record<string, any> = {
+  Target,
+  Lightbulb,
+  TrendingUp,
+  Award,
+  Trophy,
+  AlertTriangle,
+  Flame,
+  RefreshCw,
+  Clock,
+  Calendar,
+  Star,
+};
+
+const goalIconMap: Record<string, any> = {
+  frequency: Calendar,
+  duration: Clock,
+  mastery: Award,
+};
+
 const WeeklyReviewPage = () => {
   const navigate = useNavigate();
-  const { getCurrentPet } = usePetStore();
-  const { courses, getRecordsForPet, getWeeklyStats } = useTrainingStore();
+  const { getCurrentPet, getGoalsForPet } = usePetStore();
+  const { courses, getRecordsForPet, getWeeklyStats, getWeeklySuggestions, getNextWeekPlan } = useTrainingStore();
   
   const currentPet = getCurrentPet();
+  const petId = currentPet?.id || '';
   const weeklyStats = currentPet ? getWeeklyStats(currentPet.id) : null;
   const records = currentPet ? getRecordsForPet(currentPet.id) : [];
+  const suggestions = currentPet ? getWeeklySuggestions(currentPet.id) : [];
+  const nextWeekPlan = currentPet ? getNextWeekPlan(currentPet.id) : [];
+  const goals = currentPet ? getGoalsForPet(currentPet.id) : [];
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
-
-  const suggestions = [
-    {
-      icon: Target,
-      title: '增加训练频率',
-      content: '建议本周增加训练次数，从每周3次提升到5次，保持连续打卡',
-      type: 'improvement',
-    },
-    {
-      icon: Lightbulb,
-      title: '重点练习召回',
-      content: '召回训练表现一般，建议每天练习5-10分钟，使用高价值奖励',
-      type: 'focus',
-    },
-    {
-      icon: Award,
-      title: '表扬一下',
-      content: '定点排便训练进步很大！继续保持，已经养成好习惯了',
-      type: 'praise',
-    },
-    {
-      icon: Clock,
-      title: '注意休息',
-      content: '每次训练不要超过15分钟，保持宠物的兴趣和注意力',
-      type: 'tip',
-    },
-  ];
-
-  const nextWeekPlan = [
-    '每日基础训练10分钟（坐、等待、召回）',
-    '新增课程：趴下训练',
-    '周末进行一次综合复习',
-    '记录体重变化',
-  ];
 
   const score = weeklyStats ? Math.min(100, Math.round(
     (weeklyStats.completionRate * 0.3) +
@@ -98,9 +89,32 @@ const WeeklyReviewPage = () => {
     return `${mins}分钟`;
   };
 
+  const getGoalProgress = (goal: { currentValue: number; targetValue: number }) => {
+    return Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
+  };
+
+  const getGoalColor = (progress: number) => {
+    if (progress >= 100) return 'bg-green-500';
+    if (progress >= 60) return 'bg-blue-500';
+    if (progress >= 30) return 'bg-yellow-500';
+    return 'bg-orange-500';
+  };
+
+  const getGoalUnit = (goalType: string) => {
+    switch (goalType) {
+      case 'frequency':
+        return '次';
+      case 'duration':
+        return '分钟';
+      case 'mastery':
+        return '分';
+      default:
+        return '';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary-500 via-primary-400 to-primary-300">
-      {/* 顶部 */}
       <div className="text-white safe-area-top">
         <div className="flex items-center justify-between h-14 px-4">
           <button
@@ -113,7 +127,6 @@ const WeeklyReviewPage = () => {
           <div className="w-10" />
         </div>
 
-        {/* 周选择 */}
         <div className="flex items-center justify-center gap-4 py-2">
           <button className="p-1">
             <ChevronLeft size={20} />
@@ -130,7 +143,6 @@ const WeeklyReviewPage = () => {
         </div>
       </div>
 
-      {/* 评分卡片 */}
       <div className="px-4 pb-6">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -186,7 +198,6 @@ const WeeklyReviewPage = () => {
           </div>
         </motion.div>
 
-        {/* 数据统计 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -225,7 +236,65 @@ const WeeklyReviewPage = () => {
           </div>
         </motion.div>
 
-        {/* 热门课程 */}
+        {goals.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="bg-white rounded-2xl p-5 mt-6 shadow-card"
+          >
+            <h3 className="font-bold text-neutral-800 mb-4">训练目标完成情况</h3>
+            <div className="space-y-4">
+              {goals.map((goal, index) => {
+                const progress = getGoalProgress(goal);
+                const GoalIcon = goalIconMap[goal.goalType] || Target;
+                return (
+                  <motion.div
+                    key={goal.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.25 + index * 0.1 }}
+                    className="bg-neutral-50 rounded-xl p-4"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        progress >= 100 ? 'bg-green-100 text-green-500' :
+                        progress >= 60 ? 'bg-blue-100 text-blue-500' :
+                        progress >= 30 ? 'bg-yellow-100 text-yellow-500' :
+                        'bg-orange-100 text-orange-500'
+                      }`}>
+                        <GoalIcon size={20} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-neutral-800">{goal.description}</p>
+                        <p className="text-xs text-neutral-500 mt-0.5">
+                          {goal.currentValue} / {goal.targetValue} {getGoalUnit(goal.goalType)}
+                        </p>
+                      </div>
+                      <span className={`text-sm font-bold ${
+                        progress >= 100 ? 'text-green-500' :
+                        progress >= 60 ? 'text-blue-500' :
+                        progress >= 30 ? 'text-yellow-500' :
+                        'text-orange-500'
+                      }`}>
+                        {progress}%
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-neutral-200 rounded-full overflow-hidden">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progress}%` }}
+                        transition={{ duration: 1, ease: 'easeOut', delay: 0.4 + index * 0.1 }}
+                        className={`h-full rounded-full ${getGoalColor(progress)}`}
+                      />
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
         {topCourses.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -258,68 +327,70 @@ const WeeklyReviewPage = () => {
           </motion.div>
         )}
 
-        {/* 复盘建议 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="mt-6"
-        >
-          <h3 className="font-bold text-white text-lg mb-3">训练建议</h3>
-          <div className="space-y-3">
-            {suggestions.map((suggestion, index) => {
-              const Icon = suggestion.icon;
-              return (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.4 + index * 0.1 }}
-                  className="bg-white/90 backdrop-blur rounded-2xl p-4 flex gap-3"
-                >
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                    suggestion.type === 'praise' ? 'bg-green-100 text-green-500' :
-                    suggestion.type === 'improvement' ? 'bg-orange-100 text-orange-500' :
-                    suggestion.type === 'focus' ? 'bg-blue-100 text-blue-500' :
-                    'bg-purple-100 text-purple-500'
-                  }`}>
-                    <Icon size={20} />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-neutral-800">{suggestion.title}</h4>
-                    <p className="text-sm text-neutral-600 mt-1">{suggestion.content}</p>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        </motion.div>
+        {suggestions.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="mt-6"
+          >
+            <h3 className="font-bold text-white text-lg mb-3">训练建议</h3>
+            <div className="space-y-3">
+              {suggestions.map((suggestion, index) => {
+                const Icon = iconMap[suggestion.icon] || Lightbulb;
+                return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.4 + index * 0.1 }}
+                    className="bg-white/90 backdrop-blur rounded-2xl p-4 flex gap-3"
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                      suggestion.type === 'praise' ? 'bg-green-100 text-green-500' :
+                      suggestion.type === 'improvement' ? 'bg-orange-100 text-orange-500' :
+                      suggestion.type === 'focus' ? 'bg-blue-100 text-blue-500' :
+                      'bg-purple-100 text-purple-500'
+                    }`}>
+                      <Icon size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-neutral-800">{suggestion.title}</h4>
+                      <p className="text-sm text-neutral-600 mt-1">{suggestion.content}</p>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
 
-        {/* 下周计划 */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="mt-6 mb-8"
-        >
-          <h3 className="font-bold text-white text-lg mb-3">下周计划</h3>
-          <div className="bg-white/90 backdrop-blur rounded-2xl p-5">
-            <ul className="space-y-3">
-              {nextWeekPlan.map((plan, index) => (
-                <li key={index} className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-secondary-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-xs font-bold text-secondary-600">{index + 1}</span>
-                  </div>
-                  <p className="text-neutral-700">{plan}</p>
-                </li>
-              ))}
-            </ul>
-            
-            <button className="w-full mt-5 py-3 bg-primary-500 text-white rounded-xl font-medium active:scale-95 transition-transform">
-              开始新一周训练
-            </button>
-          </div>
-        </motion.div>
+        {nextWeekPlan.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="mt-6 mb-8"
+          >
+            <h3 className="font-bold text-white text-lg mb-3">下周计划</h3>
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-5">
+              <ul className="space-y-3">
+                {nextWeekPlan.map((plan, index) => (
+                  <li key={index} className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-secondary-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-xs font-bold text-secondary-600">{index + 1}</span>
+                    </div>
+                    <p className="text-neutral-700">{plan}</p>
+                  </li>
+                ))}
+              </ul>
+              
+              <button className="w-full mt-5 py-3 bg-primary-500 text-white rounded-xl font-medium active:scale-95 transition-transform">
+                开始新一周训练
+              </button>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

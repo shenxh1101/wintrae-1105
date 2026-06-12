@@ -12,7 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const RecordsPage = () => {
   const navigate = useNavigate();
-  const { pets, currentPetId, setCurrentPet, getCurrentPet } = usePetStore();
+  const { pets, currentPetId, setCurrentPet, getCurrentPet, getMemberById } = usePetStore();
   const { courses, getRecordsForPet, getRecordsForPetByDate } = useTrainingStore();
   
   const currentPet = getCurrentPet();
@@ -191,12 +191,14 @@ const RecordsPage = () => {
                 <div className="space-y-3">
                   {selectedDateRecords.map((record) => {
                     const course = courses.find(c => c.id === record.courseId);
+                    const completedByMember = record.completedBy ? getMemberById(record.completedBy) : undefined;
                     return (
                       <motion.div
                         key={record.id}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className="bg-white rounded-2xl p-4 shadow-card"
+                        onClick={() => navigate(`/records/${record.id}`)}
+                        className="bg-white rounded-2xl p-4 shadow-card cursor-pointer active:scale-[0.98] transition-transform"
                       >
                         <div className="flex items-start gap-3">
                           <div className="w-14 h-14 rounded-xl bg-primary-100 flex-shrink-0 overflow-hidden">
@@ -212,7 +214,7 @@ const RecordsPage = () => {
                               <Rating value={record.rating} size={14} readonly />
                             </div>
                             
-                            <div className="flex items-center gap-3 mt-2 text-sm text-neutral-500">
+                            <div className="flex items-center gap-3 mt-2 text-sm text-neutral-500 flex-wrap">
                               <span className="flex items-center gap-1">
                                 <Clock size={14} />
                                 {formatDuration(record.durationSeconds)}
@@ -221,6 +223,19 @@ const RecordsPage = () => {
                                 <span className="flex items-center gap-1 text-yellow-500">
                                   <Gift size={14} />
                                   {record.rewards.reduce((sum, r) => sum + r.count, 0)}次奖励
+                                </span>
+                              )}
+                              {completedByMember && (
+                                <span className="flex items-center gap-1">
+                                  <div
+                                    className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                                    style={{ backgroundColor: completedByMember.color }}
+                                  >
+                                    {completedByMember.name.charAt(0)}
+                                  </div>
+                                  <span style={{ color: completedByMember.color }}>
+                                    {completedByMember.name}
+                                  </span>
                                 </span>
                               )}
                             </div>
@@ -260,13 +275,15 @@ const RecordsPage = () => {
               <div className="space-y-3">
                 {records.slice(0, 10).map((record, index) => {
                   const course = courses.find(c => c.id === record.courseId);
+                  const completedByMember = record.completedBy ? getMemberById(record.completedBy) : undefined;
                   return (
                     <motion.div
                       key={record.id}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="bg-white rounded-2xl p-4 shadow-card"
+                      onClick={() => navigate(`/records/${record.id}`)}
+                      className="bg-white rounded-2xl p-4 shadow-card cursor-pointer active:scale-[0.98] transition-transform"
                     >
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm text-neutral-500">
@@ -284,9 +301,24 @@ const RecordsPage = () => {
                           <h4 className="font-semibold text-neutral-800 truncate">
                             {course?.title || '训练课程'}
                           </h4>
-                          <p className="text-sm text-neutral-500">
-                            {formatDuration(record.durationSeconds)}
-                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-sm text-neutral-500">
+                              {formatDuration(record.durationSeconds)}
+                            </span>
+                            {completedByMember && (
+                              <span className="flex items-center gap-1">
+                                <div
+                                  className="w-3 h-3 rounded-full flex items-center justify-center text-[8px] font-bold text-white"
+                                  style={{ backgroundColor: completedByMember.color }}
+                                >
+                                  {completedByMember.name.charAt(0)}
+                                </div>
+                                <span className="text-xs" style={{ color: completedByMember.color }}>
+                                  {completedByMember.name}
+                                </span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </motion.div>

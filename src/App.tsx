@@ -9,6 +9,8 @@ import PetsPage from "@/pages/PetsPage";
 import AddPetPage from "@/pages/AddPetPage";
 import RemindersPage from "@/pages/RemindersPage";
 import WeeklyReviewPage from "@/pages/WeeklyReviewPage";
+import FamilyPage from "@/pages/FamilyPage";
+import RecordDetailPage from "@/pages/RecordDetailPage";
 
 export default function App() {
   return (
@@ -46,6 +48,8 @@ export default function App() {
         <Route path="/training/:id" element={<TrainingPage />} />
         <Route path="/pets/add" element={<AddPetPage />} />
         <Route path="/weekly-review" element={<WeeklyReviewPage />} />
+        <Route path="/family" element={<FamilyPage />} />
+        <Route path="/records/:id" element={<RecordDetailPage />} />
       </Routes>
     </Router>
   );

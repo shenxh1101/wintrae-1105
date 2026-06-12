@@ -37,6 +37,22 @@ export interface BehaviorNote {
   isAbnormal: boolean;
 }
 
+export interface PhotoRecord {
+  id: string;
+  url: string;
+  label: 'before' | 'after' | 'progress';
+  caption?: string;
+}
+
+export interface FamilyMember {
+  id: string;
+  name: string;
+  avatar?: string;
+  role: 'owner' | 'trainer' | 'viewer';
+  color: string;
+  createdAt: string;
+}
+
 export interface TrainingRecord {
   id: string;
   petId: string;
@@ -46,8 +62,10 @@ export interface TrainingRecord {
   rating: number;
   notes: string;
   photo?: string;
+  photos: PhotoRecord[];
   rewards: RewardLog[];
   behaviorNotes: BehaviorNote[];
+  completedBy?: string;
   createdAt: string;
 }
 
