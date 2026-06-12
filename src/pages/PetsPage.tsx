@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Plus, Scale, Syringe, Bug, Edit2, Trash2, ChevronRight,
-  Calendar, Target, Award, Users, X, Check, Star
+  Plus, Scale, Syringe, Bug, Edit2, Trash2, ChevronRight, ChevronLeft,
+  Calendar, Target, Award, Users, X, Check, Star, Activity, PawPrint, BookOpen
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, addMonths, subMonths, isWithinInterval } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { usePetStore } from '../stores/usePetStore';
@@ -13,7 +13,7 @@ import { useReminderStore } from '../stores/useReminderStore';
 import Header from '../components/Header';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type TabType = 'info' | 'weight' | 'vaccine' | 'deworm' | 'goal';
+type TabType = 'info' | 'weight' | 'vaccine' | 'deworm' | 'goal' | 'timeline';
 
 type GoalTypeOption = 'frequency' | 'rating' | 'course';
 
@@ -22,9 +22,10 @@ const PetsPage = () => {
   const { 
     pets, currentPetId, setCurrentPet, getCurrentPet, 
     getWeightRecordsForPet, getVaccineRecordsForPet, getDewormRecordsForPet,
-    getGoalsForPet, addTrainingGoal, deleteTrainingGoal, deletePet
+    getGoalsForPet, addTrainingGoal, deleteTrainingGoal, deletePet,
+    familyMembers, getMemberById
   } = usePetStore();
-  const { courses, getWeeklyStats, deleteRecordsForPet } = useTrainingStore();
+  const { courses, getWeeklyStats, deleteRecordsForPet, getRecordsForPet, calculateGoalProgress } = useTrainingStore();
   const { deleteRemindersForPet } = useReminderStore();
   
   const currentPet = getCurrentPet();
@@ -37,12 +38,15 @@ const PetsPage = () => {
   const [newGoalCourseId, setNewGoalCourseId] = useState<string>('');
   const [newGoalDescription, setNewGoalDescription] = useState<string>('');
   const [newGoalDeadline, setNewGoalDeadline] = useState<string>('');
+  const [timelineMonth, setTimelineMonth] = useState(new Date());
+  const [expandedTimelineId, setExpandedTimelineId] = useState<string | null>(null);
 
   const weightRecords = currentPet ? getWeightRecordsForPet(currentPet.id) : [];
   const vaccineRecords = currentPet ? getVaccineRecordsForPet(currentPet.id) : [];
   const dewormRecords = currentPet ? getDewormRecordsForPet(currentPet.id) : [];
   const goals = currentPet ? getGoalsForPet(currentPet.id) : [];
   const weeklyStats = currentPet ? getWeeklyStats(currentPet.id) : null;
+  const trainingRecords = currentPet ? getRecordsForPet(currentPet.id) : [];
 
   const weightChartData = weightRecords.map(r => ({
     date: format(new Date(r.date), 'M/d'),
@@ -52,35 +56,23 @@ const PetsPage = () => {
   const goalDisplayInfo = useMemo(() => {
     return goals.map(goal => {
       let displayType = '';
-      let currentValue = 0;
-      let targetValue = goal.targetValue;
-      let progress = 0;
 
       if (goal.goalType === 'frequency') {
         displayType = '本周训练次数';
-        currentValue = weeklyStats?.totalTrainings || 0;
-        targetValue = goal.targetValue;
-        progress = Math.min(100, Math.round((currentValue / Math.max(1, targetValue)) * 100));
       } else if (goal.goalType === 'mastery' && goal.courseId) {
         const course = courses.find(c => c.id === goal.courseId);
         displayType = `重点课程：${course?.title || '未知课程'}`;
-        const recordsForCourse = useTrainingStore.getState().records
-          .filter(r => r.petId === goal.petId && r.courseId === goal.courseId);
-        currentValue = recordsForCourse.length > 0
-          ? Math.round(recordsForCourse.reduce((s, r) => s + r.rating, 0) / recordsForCourse.length * 10) / 10
-          : 0;
-        targetValue = goal.targetValue;
-        progress = Math.min(100, Math.round((currentValue / Math.max(1, targetValue)) * 100));
       } else {
         displayType = '平均评分';
-        currentValue = weeklyStats?.averageRating || 0;
-        targetValue = goal.targetValue;
-        progress = Math.min(100, Math.round((currentValue / Math.max(1, targetValue)) * 100));
       }
+
+      const currentValue = calculateGoalProgress(currentPet.id, goal);
+      const targetValue = goal.targetValue;
+      const progress = Math.min(100, Math.round((currentValue / Math.max(1, targetValue)) * 100));
 
       return { ...goal, displayType, currentValue, targetValue, progress };
     });
-  }, [goals, weeklyStats, courses]);
+  }, [goals, courses, calculateGoalProgress, currentPet?.id]);
 
   const ageText = (months: number) => {
     if (months >= 12) {
@@ -96,8 +88,128 @@ const PetsPage = () => {
     { id: 'weight' as const, label: '体重曲线', icon: Scale },
     { id: 'vaccine' as const, label: '疫苗记录', icon: Syringe },
     { id: 'deworm' as const, label: '驱虫记录', icon: Bug },
+    { id: 'timeline' as const, label: '健康时间线', icon: Activity },
     { id: 'goal' as const, label: '训练目标', icon: Target },
   ] as const;
+
+  const timelineData = useMemo(() => {
+    if (!currentPet) return [];
+    
+    const monthStart = startOfMonth(timelineMonth);
+    const monthEnd = endOfMonth(timelineMonth);
+    
+    type TimelineItem = {
+      id: string;
+      type: 'weight' | 'vaccine' | 'deworm' | 'training';
+      date: string;
+      timestamp: number;
+      title: string;
+      subtitle: string;
+      details: Record<string, string | undefined>;
+    };
+    
+    const items: TimelineItem[] = [];
+    
+    weightRecords.forEach(r => {
+      const date = new Date(r.date);
+      if (isWithinInterval(date, { start: monthStart, end: monthEnd })) {
+        items.push({
+          id: `weight-${r.id}`,
+          type: 'weight',
+          date: r.date,
+          timestamp: date.getTime(),
+          title: `体重记录 - ${r.weightKg} kg`,
+          subtitle: r.note || '记录体重',
+          details: {
+            '体重': `${r.weightKg} kg`,
+            '备注': r.note,
+          },
+        });
+      }
+    });
+    
+    vaccineRecords.forEach(r => {
+      const date = new Date(r.date);
+      if (isWithinInterval(date, { start: monthStart, end: monthEnd })) {
+        items.push({
+          id: `vaccine-${r.id}`,
+          type: 'vaccine',
+          date: r.date,
+          timestamp: date.getTime(),
+          title: `疫苗 - ${r.name}`,
+          subtitle: r.hospital || '接种疫苗',
+          details: {
+            '疫苗名称': r.name,
+            '接种医院': r.hospital,
+            '下次接种': r.nextDate,
+          },
+        });
+      }
+    });
+    
+    dewormRecords.forEach(r => {
+      const date = new Date(r.date);
+      if (isWithinInterval(date, { start: monthStart, end: monthEnd })) {
+        const typeText = r.type === 'internal' ? '体内' : '体外';
+        items.push({
+          id: `deworm-${r.id}`,
+          type: 'deworm',
+          date: r.date,
+          timestamp: date.getTime(),
+          title: `驱虫 - ${typeText}`,
+          subtitle: r.product || `${typeText}驱虫`,
+          details: {
+            '驱虫类型': typeText,
+            '使用产品': r.product,
+            '下次驱虫': r.nextDate,
+          },
+        });
+      }
+    });
+    
+    trainingRecords.forEach(r => {
+      const date = new Date(r.date);
+      if (isWithinInterval(date, { start: monthStart, end: monthEnd })) {
+        const course = courses.find(c => c.id === r.courseId);
+        const member = r.completedBy ? getMemberById(r.completedBy) : undefined;
+        const mins = Math.floor(r.durationSeconds / 60);
+        const secs = r.durationSeconds % 60;
+        const durationText = secs > 0 ? `${mins}分${secs}秒` : `${mins}分钟`;
+        items.push({
+          id: `training-${r.id}`,
+          type: 'training',
+          date: r.date,
+          timestamp: date.getTime(),
+          title: `训练 - ${course?.title || '课程'} - ${durationText}`,
+          subtitle: member ? `由 ${member.name} 完成` : '完成训练',
+          details: {
+            '课程名称': course?.title,
+            '训练时长': durationText,
+            '评分': `${r.rating} 分`,
+            '完成人': member?.name,
+            '训练笔记': r.notes,
+          },
+        });
+      }
+    });
+    
+    return items.sort((a, b) => b.timestamp - a.timestamp);
+  }, [currentPet, timelineMonth, weightRecords, vaccineRecords, dewormRecords, trainingRecords, courses, getMemberById]);
+
+  const getTimelineTypeConfig = (type: string) => {
+    switch (type) {
+      case 'weight':
+        return { icon: Scale, color: 'text-blue-500', bg: 'bg-blue-100', border: 'border-blue-200' };
+      case 'vaccine':
+        return { icon: Syringe, color: 'text-purple-500', bg: 'bg-purple-100', border: 'border-purple-200' };
+      case 'deworm':
+        return { icon: Bug, color: 'text-green-500', bg: 'bg-green-100', border: 'border-green-200' };
+      case 'training':
+        return { icon: PawPrint, color: 'text-orange-500', bg: 'bg-orange-100', border: 'border-orange-200' };
+      default:
+        return { icon: Activity, color: 'text-neutral-500', bg: 'bg-neutral-100', border: 'border-neutral-200' };
+    }
+  };
 
   const handleDeletePet = () => {
     if (currentPet) {
@@ -367,10 +479,7 @@ const PetsPage = () => {
                       <Target size={24} className="text-secondary-500" />
                     </div>
                     <p className="text-xl font-bold text-neutral-800">
-                      {goals.filter(g => {
-                        if (g.goalType === 'frequency') return (weeklyStats?.totalTrainings || 0) >= g.targetValue;
-                        return (weeklyStats?.averageRating || 0) >= g.targetValue;
-                      }).length}/{goals.length}
+                      {goals.filter(g => calculateGoalProgress(currentPet.id, g) >= g.targetValue).length}/{goals.length}
                     </p>
                     <p className="text-xs text-neutral-500">达成目标</p>
                   </div>
@@ -625,6 +734,118 @@ const PetsPage = () => {
                 <div className="bg-white rounded-2xl p-8 shadow-card text-center">
                   <Bug size={40} className="mx-auto text-neutral-300 mb-3" />
                   <p className="text-neutral-500">还没有驱虫记录</p>
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {/* 健康时间线 */}
+          {activeTab === 'timeline' && (
+            <motion.div
+              key="timeline"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="bg-white rounded-2xl p-4 shadow-card mb-4">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setTimelineMonth(subMonths(timelineMonth, 1))}
+                    className="w-9 h-9 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors"
+                  >
+                    <ChevronLeft size={20} className="text-neutral-600" />
+                  </button>
+                  <h3 className="text-lg font-bold text-neutral-800">
+                    {format(timelineMonth, 'yyyy年M月', { locale: zhCN })}
+                  </h3>
+                  <button
+                    onClick={() => setTimelineMonth(addMonths(timelineMonth, 1))}
+                    className="w-9 h-9 rounded-full bg-neutral-100 flex items-center justify-center hover:bg-neutral-200 transition-colors"
+                  >
+                    <ChevronRight size={20} className="text-neutral-600" />
+                  </button>
+                </div>
+              </div>
+
+              {timelineData.length > 0 ? (
+                <div className="relative">
+                  <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-neutral-200" />
+                  <div className="space-y-4">
+                    {timelineData.map((item, index) => {
+                      const config = getTimelineTypeConfig(item.type);
+                      const Icon = config.icon;
+                      const isExpanded = expandedTimelineId === item.id;
+                      return (
+                        <motion.div
+                          key={item.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                          className="relative pl-12"
+                        >
+                          <div className={`absolute left-0 top-1 w-10 h-10 rounded-full ${config.bg} flex items-center justify-center border-2 border-white shadow-sm`}>
+                            <Icon size={18} className={config.color} />
+                          </div>
+                          <motion.div
+                            onClick={() => setExpandedTimelineId(isExpanded ? null : item.id)}
+                            className={`bg-white rounded-2xl p-4 shadow-card cursor-pointer border ${config.border} transition-all`}
+                            whileTap={{ scale: 0.98 }}
+                            layout
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <h4 className={`font-semibold ${config.color}`}>
+                                  {item.title}
+                                </h4>
+                                <p className="text-xs text-neutral-400 mt-1">
+                                  {format(new Date(item.date), 'M月d日 EEEE', { locale: zhCN })}
+                                </p>
+                                <p className="text-sm text-neutral-600 mt-2">
+                                  {item.subtitle}
+                                </p>
+                              </div>
+                              <motion.div
+                                animate={{ rotate: isExpanded ? 180 : 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="flex-shrink-0 mt-1"
+                              >
+                                <ChevronRight size={18} className="text-neutral-400" />
+                              </motion.div>
+                            </div>
+                            <AnimatePresence>
+                              {isExpanded && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="overflow-hidden"
+                                >
+                                  <div className="mt-3 pt-3 border-t border-neutral-100 space-y-2">
+                                    {Object.entries(item.details).map(([key, value]) => (
+                                      value && (
+                                        <div key={key} className="flex justify-between items-start gap-3 text-sm">
+                                          <span className="text-neutral-500 flex-shrink-0">{key}</span>
+                                          <span className="text-neutral-700 text-right">{value}</span>
+                                        </div>
+                                      )
+                                    ))}
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </motion.div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl p-10 shadow-card text-center">
+                  <Activity size={40} className="mx-auto text-neutral-300 mb-3" />
+                  <p className="text-neutral-500 mb-1">本月还没有健康记录</p>
+                  <p className="text-neutral-400 text-sm">记录宠物的健康状况，关注它的成长</p>
                 </div>
               )}
             </motion.div>

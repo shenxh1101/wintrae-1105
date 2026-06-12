@@ -15,14 +15,13 @@ import type { TrainingGoal } from '../types';
 const HomePage = () => {
   const navigate = useNavigate();
   const { pets, currentPetId, setCurrentPet, getCurrentPet, getGoalsForPet } = usePetStore();
-  const { courses, getRecordsForPet, getWeeklyStats, getRecordsForPetByDate, getWeeklySuggestions } = useTrainingStore();
+  const { courses, getRecordsForPet, getWeeklyStats, getRecordsForPetByDate, getWeeklySuggestions, calculateGoalProgress } = useTrainingStore();
   const currentPet = getCurrentPet();
   const today = format(new Date(), 'yyyy-MM-dd');
   
   const todayRecords = currentPet ? getRecordsForPetByDate(currentPet.id, today) : [];
   const weeklyStats = currentPet ? getWeeklyStats(currentPet.id) : null;
   const petGoals = currentPet ? getGoalsForPet(currentPet.id) : [];
-  const allRecords = currentPet ? getRecordsForPet(currentPet.id) : [];
   
   const todayCourseIds = new Set(todayRecords.map(r => r.courseId));
   const todayTarget = 3;
@@ -46,29 +45,23 @@ const HomePage = () => {
     return '晚上好';
   };
 
-  const getGoalProgress = (goal: TrainingGoal) => {
-    let currentValue = 0;
-    let targetValue = goal.targetValue;
+  const getGoalProgress = (petId: string, goal: TrainingGoal) => {
+    const currentValue = calculateGoalProgress(petId, goal);
+    const targetValue = goal.targetValue;
     let displayType = '';
     let icon: typeof Target = Target;
     let iconColor = 'bg-primary-100 text-primary-500';
 
     if (goal.goalType === 'frequency') {
-      currentValue = weeklyStats?.totalTrainings || 0;
       displayType = '训练次数';
       icon = Calendar;
       iconColor = 'bg-orange-100 text-orange-500';
     } else if (goal.goalType === 'mastery' && goal.courseId) {
-      const courseRecords = allRecords.filter(r => r.courseId === goal.courseId);
-      currentValue = courseRecords.length > 0
-        ? Math.round((courseRecords.reduce((sum, r) => sum + r.rating, 0) / courseRecords.length) * 10) / 10
-        : 0;
       const course = courses.find(c => c.id === goal.courseId);
       displayType = course ? course.title : '重点课程';
       icon = Award;
       iconColor = 'bg-green-100 text-green-500';
     } else if (goal.goalType === 'mastery') {
-      currentValue = weeklyStats?.averageRating || 0;
       displayType = '平均评分';
       icon = Star;
       iconColor = 'bg-yellow-100 text-yellow-500';
@@ -274,7 +267,7 @@ const HomePage = () => {
             {petGoals.length > 0 ? (
               <div className="space-y-4">
                 {petGoals.map((goal, index) => {
-                  const { currentValue, targetValue, progress, displayType, icon: GoalIcon, iconColor } = getGoalProgress(goal);
+                  const { currentValue, targetValue, progress, displayType, icon: GoalIcon, iconColor } = getGoalProgress(currentPet.id, goal);
                   return (
                     <motion.div
                       key={goal.id}

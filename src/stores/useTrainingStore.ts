@@ -1,13 +1,23 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { TrainingCourse, TrainingRecord, RewardLog, BehaviorNote, PhotoRecord } from '../types';
+import type { TrainingCourse, TrainingRecord, RewardLog, BehaviorNote, PhotoRecord, TrainingGoal } from '../types';
 import { mockCourses, mockRecords, mockCategories } from '../data/mockData';
+import { usePetStore } from './usePetStore';
 
 interface SuggestionItem {
   icon: string;
   title: string;
   content: string;
   type: 'improvement' | 'focus' | 'praise' | 'tip';
+}
+
+interface MemberWeeklyStat {
+  memberId: string;
+  memberName: string;
+  memberColor: string;
+  totalTrainings: number;
+  totalDuration: number;
+  averageRating: number;
 }
 
 interface TrainingStore {
@@ -29,6 +39,7 @@ interface TrainingStore {
   
   addPhoto: (recordId: string, photo: Omit<PhotoRecord, 'id'>) => void;
   
+  getWeeklyRecords: (petId: string, offsetWeeks?: number) => TrainingRecord[];
   getWeeklyStats: (petId: string) => {
     totalTrainings: number;
     totalDuration: number;
@@ -39,6 +50,9 @@ interface TrainingStore {
   
   getWeeklySuggestions: (petId: string) => SuggestionItem[];
   getNextWeekPlan: (petId: string) => string[];
+  
+  calculateGoalProgress: (petId: string, goal: TrainingGoal) => number;
+  getMemberWeeklyStats: (petId: string, weekOffset?: number) => MemberWeeklyStat[];
   
   addReward: (recordId: string, reward: Omit<RewardLog, 'id'>) => void;
   addBehaviorNote: (recordId: string, note: Omit<BehaviorNote, 'id'>) => void;
@@ -131,16 +145,27 @@ export const useTrainingStore = create<TrainingStore>()(
         }));
       },
 
-      getWeeklyStats: (petId) => {
+      getWeeklyRecords: (petId, offsetWeeks = 0) => {
         const today = new Date();
+        const currentDay = today.getDay();
+        const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
         const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - 6);
+        weekStart.setDate(today.getDate() + diffToMonday - offsetWeeks * 7);
         weekStart.setHours(0, 0, 0, 0);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
 
-        const records = get().records.filter((r) => {
+        return get().records.filter((r) => {
           const recordDate = new Date(r.date);
-          return r.petId === petId && recordDate >= weekStart;
+          return r.petId === petId && recordDate >= weekStart && recordDate <= weekEnd;
         });
+      },
+
+      getWeeklyStats: (petId) => {
+        const { getWeeklyRecords } = get();
+        const records = getWeeklyRecords(petId);
+        const today = new Date();
 
         const totalTrainings = records.length;
         const totalDuration = records.reduce(
@@ -157,10 +182,10 @@ export const useTrainingStore = create<TrainingStore>()(
         let streak = 0;
         const checkDate = new Date(today);
         checkDate.setHours(0, 0, 0, 0);
-        
+
         for (let i = 0; i < 30; i++) {
           const dateStr = checkDate.toISOString().split('T')[0];
-          const hasTraining = records.some((r) => r.date === dateStr);
+          const hasTraining = get().records.some((r) => r.petId === petId && r.date === dateStr);
           if (hasTraining) {
             streak++;
           } else if (i > 0) {
@@ -180,9 +205,9 @@ export const useTrainingStore = create<TrainingStore>()(
 
       getWeeklySuggestions: (petId) => {
         const suggestions: SuggestionItem[] = [];
-        const { courses, getWeeklyStats, getRecordsForPet } = get();
+        const { courses, getWeeklyStats, getWeeklyRecords } = get();
         const stats = getWeeklyStats(petId);
-        const records = getRecordsForPet(petId);
+        const records = getWeeklyRecords(petId);
 
         if (stats.totalTrainings === 0) {
           suggestions.push({
@@ -297,9 +322,10 @@ export const useTrainingStore = create<TrainingStore>()(
 
       getNextWeekPlan: (petId) => {
         const plans: string[] = [];
-        const { getWeeklyStats, getRecordsForPet, courses } = get();
+        const { getWeeklyStats, getWeeklyRecords, courses } = get();
         const stats = getWeeklyStats(petId);
-        const records = getRecordsForPet(petId);
+        const weeklyRecords = getWeeklyRecords(petId);
+        const allRecords = get().records.filter(r => r.petId === petId);
 
         if (stats.totalTrainings < 3) {
           plans.push('每日基础训练10分钟，保持频率比单次时长更重要');
@@ -307,14 +333,14 @@ export const useTrainingStore = create<TrainingStore>()(
           plans.push(`保持每周${stats.totalTrainings >= 5 ? stats.totalTrainings : 5}次的训练频率`);
         }
 
-        const trainedCourseIds = new Set(records.slice(0, 10).map(r => r.courseId));
+        const trainedCourseIds = new Set(allRecords.slice(0, 10).map(r => r.courseId));
         const untrained = courses.filter(c => !trainedCourseIds.has(c.id) && c.difficulty === 'easy');
         
         if (untrained.length > 0) {
           plans.push(`新增课程：${untrained[0].title}，循序渐进开始学习`);
         }
 
-        const weakCourses = records
+        const weakCourses = weeklyRecords
           .filter(r => r.rating < 4)
           .map(r => r.courseId);
         
@@ -329,6 +355,74 @@ export const useTrainingStore = create<TrainingStore>()(
         plans.push('检查疫苗和驱虫是否在有效期内');
 
         return plans;
+      },
+
+      calculateGoalProgress: (petId, goal) => {
+        const { getWeeklyRecords } = get();
+        const weeklyRecords = getWeeklyRecords(petId);
+
+        switch (goal.goalType) {
+          case 'frequency':
+            return weeklyRecords.length;
+
+          case 'duration':
+            return weeklyRecords.reduce((sum, r) => sum + r.durationSeconds, 0);
+
+          case 'mastery':
+            if (goal.courseId) {
+              const courseRecords = weeklyRecords.filter(r => r.courseId === goal.courseId);
+              if (courseRecords.length === 0) return 0;
+              const avg = courseRecords.reduce((sum, r) => sum + r.rating, 0) / courseRecords.length;
+              return Math.round(avg * 10) / 10;
+            } else {
+              if (weeklyRecords.length === 0) return 0;
+              const avg = weeklyRecords.reduce((sum, r) => sum + r.rating, 0) / weeklyRecords.length;
+              return Math.round(avg * 10) / 10;
+            }
+
+          default:
+            return 0;
+        }
+      },
+
+      getMemberWeeklyStats: (petId, weekOffset = 0) => {
+        const { getWeeklyRecords } = get();
+        const weeklyRecords = getWeeklyRecords(petId, weekOffset);
+        const petStore = usePetStore.getState();
+        const members = petStore.familyMembers;
+
+        const memberStats: Record<string, { totalTrainings: number; totalDuration: number; totalRating: number; ratingCount: number }> = {};
+
+        members.forEach(m => {
+          memberStats[m.id] = { totalTrainings: 0, totalDuration: 0, totalRating: 0, ratingCount: 0 };
+        });
+
+        weeklyRecords.forEach(r => {
+          const memberId = r.completedBy || petStore.currentMemberId;
+          if (!memberStats[memberId]) {
+            const member = members.find(m => m.id === memberId);
+            if (member) {
+              memberStats[memberId] = { totalTrainings: 0, totalDuration: 0, totalRating: 0, ratingCount: 0 };
+            } else {
+              return;
+            }
+          }
+          memberStats[memberId].totalTrainings++;
+          memberStats[memberId].totalDuration += r.durationSeconds;
+          memberStats[memberId].totalRating += r.rating;
+          memberStats[memberId].ratingCount++;
+        });
+
+        return members.map(m => ({
+          memberId: m.id,
+          memberName: m.name,
+          memberColor: m.color,
+          totalTrainings: memberStats[m.id]?.totalTrainings || 0,
+          totalDuration: memberStats[m.id]?.totalDuration || 0,
+          averageRating: memberStats[m.id]?.ratingCount > 0
+            ? Math.round((memberStats[m.id].totalRating / memberStats[m.id].ratingCount) * 10) / 10
+            : 0,
+        }));
       },
 
       addReward: (recordId, reward) => {

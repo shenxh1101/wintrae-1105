@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Trophy, TrendingUp, Target, Flame, Clock, Star, 
   ChevronLeft, ChevronRight, Lightbulb, Calendar, Award,
-  AlertTriangle, RefreshCw
+  AlertTriangle, RefreshCw, Users
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -32,8 +32,8 @@ const goalIconMap: Record<string, any> = {
 
 const WeeklyReviewPage = () => {
   const navigate = useNavigate();
-  const { getCurrentPet, getGoalsForPet } = usePetStore();
-  const { courses, getRecordsForPet, getWeeklyStats, getWeeklySuggestions, getNextWeekPlan } = useTrainingStore();
+  const { getCurrentPet, getGoalsForPet, getMemberById, familyMembers } = usePetStore();
+  const { courses, getRecordsForPet, getWeeklyStats, getWeeklySuggestions, getNextWeekPlan, getMemberWeeklyStats, calculateGoalProgress } = useTrainingStore();
   
   const currentPet = getCurrentPet();
   const petId = currentPet?.id || '';
@@ -42,6 +42,7 @@ const WeeklyReviewPage = () => {
   const suggestions = currentPet ? getWeeklySuggestions(currentPet.id) : [];
   const nextWeekPlan = currentPet ? getNextWeekPlan(currentPet.id) : [];
   const goals = currentPet ? getGoalsForPet(currentPet.id) : [];
+  const memberWeeklyStats = currentPet ? getMemberWeeklyStats(currentPet.id) : [];
 
   const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
@@ -89,10 +90,6 @@ const WeeklyReviewPage = () => {
     return `${mins}分钟`;
   };
 
-  const getGoalProgress = (goal: { currentValue: number; targetValue: number }) => {
-    return Math.min(100, Math.round((goal.currentValue / goal.targetValue) * 100));
-  };
-
   const getGoalColor = (progress: number) => {
     if (progress >= 100) return 'bg-green-500';
     if (progress >= 60) return 'bg-blue-500';
@@ -110,6 +107,39 @@ const WeeklyReviewPage = () => {
         return '分';
       default:
         return '';
+    }
+  };
+
+  const memberStatsWithInfo = memberWeeklyStats.map(stat => {
+    const member = stat.memberId !== 'unknown' ? getMemberById(stat.memberId) : undefined;
+    return {
+      ...stat,
+      memberName: member?.name || stat.memberName || '未指定',
+      memberColor: member?.color || stat.memberColor || '#9CA3AF',
+      memberRole: member?.role || 'viewer',
+    };
+  });
+
+  const maxTrainings = memberStatsWithInfo.length > 0
+    ? Math.max(...memberStatsWithInfo.map(m => m.totalTrainings))
+    : 0;
+
+  const formatMemberDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    if (mins >= 60) {
+      const hours = Math.floor(mins / 60);
+      const remainMins = mins % 60;
+      return `${hours}小时${remainMins > 0 ? remainMins + '分' : ''}`;
+    }
+    return `${mins}分钟`;
+  };
+
+  const getRoleText = (role: string) => {
+    switch (role) {
+      case 'owner': return '主人';
+      case 'trainer': return '训练师';
+      case 'viewer': return '家庭成员';
+      default: return '成员';
     }
   };
 
@@ -246,7 +276,8 @@ const WeeklyReviewPage = () => {
             <h3 className="font-bold text-neutral-800 mb-4">训练目标完成情况</h3>
             <div className="space-y-4">
               {goals.map((goal, index) => {
-                const progress = getGoalProgress(goal);
+                const currentValue = calculateGoalProgress(currentPet.id, goal);
+                const progress = Math.min(100, Math.round((currentValue / Math.max(1, goal.targetValue)) * 100));
                 const GoalIcon = goalIconMap[goal.goalType] || Target;
                 return (
                   <motion.div
@@ -268,7 +299,7 @@ const WeeklyReviewPage = () => {
                       <div className="flex-1">
                         <p className="font-medium text-neutral-800">{goal.description}</p>
                         <p className="text-xs text-neutral-500 mt-0.5">
-                          {goal.currentValue} / {goal.targetValue} {getGoalUnit(goal.goalType)}
+                          {currentValue} / {goal.targetValue} {getGoalUnit(goal.goalType)}
                         </p>
                       </div>
                       <span className={`text-sm font-bold ${
@@ -323,6 +354,95 @@ const WeeklyReviewPage = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          </motion.div>
+        )}
+
+        {memberStatsWithInfo.length > 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="bg-white rounded-2xl p-5 mt-6 shadow-card"
+          >
+            <h3 className="font-bold text-neutral-800 mb-4">🏆 家庭成员本周贡献</h3>
+            <div className="space-y-4">
+              {memberStatsWithInfo.map((member, index) => {
+                const progress = maxTrainings > 0
+                  ? Math.round((member.totalTrainings / maxTrainings) * 100)
+                  : 0;
+                return (
+                  <motion.div
+                    key={member.memberId}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.35 + index * 0.1 }}
+                    className="bg-neutral-50 rounded-2xl p-4"
+                  >
+                    <div className="flex items-start gap-3 mb-3">
+                      <div
+                        className="w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-bold text-white flex-shrink-0 shadow-sm"
+                        style={{ backgroundColor: member.memberColor }}
+                      >
+                        {member.memberName.charAt(0)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-semibold text-neutral-800">{member.memberName}</h4>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-200 text-neutral-600">
+                            {getRoleText(member.memberRole)}
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-neutral-200 rounded-full overflow-hidden mt-2">
+                          <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: `${progress}%` }}
+                            transition={{ duration: 0.8, ease: 'easeOut', delay: 0.5 + index * 0.1 }}
+                            className="h-full rounded-full"
+                            style={{ backgroundColor: member.memberColor }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-white rounded-xl p-2 text-center">
+                        <p className="text-lg font-bold" style={{ color: member.memberColor }}>
+                          {member.totalTrainings}
+                        </p>
+                        <p className="text-xs text-neutral-500">训练次数</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-2 text-center">
+                        <p className="text-lg font-bold text-neutral-700">
+                          {formatMemberDuration(member.totalDuration)}
+                        </p>
+                        <p className="text-xs text-neutral-500">总时长</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-2 text-center">
+                        <p className="text-lg font-bold text-yellow-500">
+                          {member.averageRating}
+                        </p>
+                        <p className="text-xs text-neutral-500">平均评分</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="bg-white rounded-2xl p-5 mt-6 shadow-card"
+          >
+            <h3 className="font-bold text-neutral-800 mb-4">🏆 家庭成员本周贡献</h3>
+            <div className="text-center py-6">
+              <div className="w-16 h-16 mx-auto bg-neutral-100 rounded-full flex items-center justify-center mb-3">
+                <Users size={28} className="text-neutral-300" />
+              </div>
+              <p className="text-neutral-500 mb-1">还没有成员完成训练</p>
+              <p className="text-neutral-400 text-sm">邀请家人一起参与宠物训练吧</p>
             </div>
           </motion.div>
         )}

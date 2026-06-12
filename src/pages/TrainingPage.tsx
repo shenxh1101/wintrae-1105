@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Play, Pause, RotateCcw, ChevronLeft, Gift, AlertTriangle, 
-  Check, Trophy, X, Camera, User, Plus
+  Check, Trophy, X, Camera, User, Plus, Image
 } from 'lucide-react';
 import { useTrainingStore } from '../stores/useTrainingStore';
 import { usePetStore } from '../stores/usePetStore';
@@ -11,21 +11,6 @@ import Rating from '../components/Rating';
 import { motion, AnimatePresence } from 'framer-motion';
 
 type TrainingPhase = 'ready' | 'running' | 'paused' | 'finished';
-
-const defaultPhotos: PhotoRecord[] = [
-  {
-    id: 'demo-before',
-    url: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20puppy%20training%20before%20calm%20sitting%20warm%20lighting&image_size=square',
-    label: 'before',
-    caption: '训练前',
-  },
-  {
-    id: 'demo-after',
-    url: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20puppy%20training%20success%20happy%20reward%20treat%20warm&image_size=square',
-    label: 'after',
-    caption: '训练后',
-  },
-];
 
 const TrainingPage = () => {
   const { id } = useParams<{ id: string }>();
@@ -47,11 +32,15 @@ const TrainingPage = () => {
   const [behaviorText, setBehaviorText] = useState('');
   const [behaviorList, setBehaviorList] = useState<string[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
-  const [photos, setPhotos] = useState<PhotoRecord[]>(defaultPhotos);
+  const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [showMemberModal, setShowMemberModal] = useState(false);
   const [selectedMemberId, setSelectedMemberId] = useState(currentMemberId);
+  const [showPhotoPicker, setShowPhotoPicker] = useState(false);
+  const [activePhotoLabel, setActivePhotoLabel] = useState<'before' | 'after' | 'progress'>('before');
   
   const timerRef = useRef<number | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const albumInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (phase === 'running') {
@@ -118,14 +107,46 @@ const TrainingPage = () => {
   };
 
   const handleAddPhoto = (label: 'before' | 'after' | 'progress') => {
-    const captions = { before: '训练前', after: '训练后', progress: '阶段性' };
-    const newPhoto: PhotoRecord = {
-      id: `photo-${Date.now()}-${Math.random()}`,
-      url: `https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=cute%20pet%20training%20${label}%20${Date.now()}&image_size=square`,
-      label,
-      caption: captions[label],
+    setActivePhotoLabel(label);
+    setShowPhotoPicker(true);
+  };
+
+  const handleChooseCamera = () => {
+    setShowPhotoPicker(false);
+    setTimeout(() => {
+      cameraInputRef.current?.click();
+    }, 300);
+  };
+
+  const handleChooseAlbum = () => {
+    setShowPhotoPicker(false);
+    setTimeout(() => {
+      albumInputRef.current?.click();
+    }, 300);
+  };
+
+  const handleCancelPhotoPicker = () => {
+    setShowPhotoPicker(false);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataURL = event.target?.result as string;
+      const captions = { before: '训练前', after: '训练后', progress: '阶段性' };
+      const newPhoto: PhotoRecord = {
+        id: `photo-${Date.now()}-${Math.random()}`,
+        url: dataURL,
+        label: activePhotoLabel,
+        caption: captions[activePhotoLabel],
+      };
+      setPhotos([...photos, newPhoto]);
     };
-    setPhotos([...photos, newPhoto]);
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
   const handleRemovePhoto = (photoId: string) => {
@@ -731,6 +752,82 @@ const TrainingPage = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* 照片来源选择弹窗 */}
+      <AnimatePresence>
+        {showPhotoPicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-end z-50"
+            onClick={handleCancelPhotoPicker}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="w-full bg-white rounded-t-3xl p-6 safe-area-bottom text-neutral-800"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-bold mb-4 text-center">选择照片来源</h3>
+              
+              <div className="space-y-3 mb-4">
+                <button
+                  onClick={handleChooseCamera}
+                  className="w-full flex items-center gap-4 p-4 rounded-xl bg-primary-50 hover:bg-primary-100 transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-full bg-primary-500 flex items-center justify-center">
+                    <Camera size={24} className="text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-medium text-lg">拍照</p>
+                    <p className="text-sm text-neutral-500">使用相机拍摄新照片</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={handleChooseAlbum}
+                  className="w-full flex items-center gap-4 p-4 rounded-xl bg-neutral-50 hover:bg-neutral-100 transition-colors"
+                >
+                  <div className="w-12 h-12 rounded-full bg-neutral-500 flex items-center justify-center">
+                    <Image size={24} className="text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-medium text-lg">从相册选择</p>
+                    <p className="text-sm text-neutral-500">从手机相册选择照片</p>
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={handleCancelPhotoPicker}
+                className="w-full py-4 bg-neutral-100 text-neutral-600 rounded-xl font-medium text-lg"
+              >
+                取消
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 隐藏的 file input */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <input
+        ref={albumInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
     </div>
   );
 };

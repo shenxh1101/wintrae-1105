@@ -12,22 +12,31 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 const RecordsPage = () => {
   const navigate = useNavigate();
-  const { pets, currentPetId, setCurrentPet, getCurrentPet, getMemberById } = usePetStore();
+  const { pets, currentPetId, setCurrentPet, getCurrentPet, getMemberById, familyMembers } = usePetStore();
   const { courses, getRecordsForPet, getRecordsForPetByDate } = useTrainingStore();
   
   const currentPet = getCurrentPet();
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [memberFilter, setMemberFilter] = useState<string>('all');
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  const records = currentPet ? getRecordsForPet(currentPet.id) : [];
-  const selectedDateRecords = selectedDate && currentPet
+  const allRecords = currentPet ? getRecordsForPet(currentPet.id) : [];
+  const records = memberFilter === 'all' 
+    ? allRecords 
+    : allRecords.filter(r => r.completedBy === memberFilter);
+  
+  const allSelectedDateRecords = selectedDate && currentPet
     ? getRecordsForPetByDate(currentPet.id, selectedDate)
     : [];
+  const selectedDateRecords = memberFilter === 'all'
+    ? allSelectedDateRecords
+    : allSelectedDateRecords.filter(r => r.completedBy === memberFilter);
 
+  const allTrainingDates = new Set(allRecords.map(r => r.date));
   const trainingDates = new Set(records.map(r => r.date));
 
   const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
@@ -58,6 +67,11 @@ const RecordsPage = () => {
     streak: 0,
   };
 
+  const filterOptions = [
+    { id: 'all', name: '全部', color: '#6B7280' },
+    ...familyMembers.map(m => ({ id: m.id, name: m.name, color: m.color })),
+  ];
+
   return (
     <div className="pb-6">
       <Header title="打卡记录" />
@@ -76,6 +90,43 @@ const RecordsPage = () => {
                 />
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* 完成人筛选 */}
+        <div className="mb-4">
+          <div className="overflow-x-auto hide-scrollbar -mx-4 px-4">
+            <div className="flex gap-2" style={{ width: 'max-content' }}>
+              {filterOptions.map((option) => {
+                const isActive = memberFilter === option.id;
+                return (
+                  <motion.button
+                    key={option.id}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => setMemberFilter(option.id)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-2xl border-2 transition-all ${
+                      isActive
+                        ? 'border-primary-400 bg-primary-50 shadow-soft'
+                        : 'border-neutral-100 bg-white hover:border-neutral-200'
+                    }`}
+                  >
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                        isActive ? 'ring-2 ring-white ring-offset-1' : ''
+                      }`}
+                      style={{ backgroundColor: option.color }}
+                    >
+                      {option.id === 'all' ? '✓' : option.name.charAt(0)}
+                    </div>
+                    <span className={`text-sm font-medium whitespace-nowrap ${
+                      isActive ? 'text-primary-600' : 'text-neutral-600'
+                    }`}>
+                      {option.name}
+                    </span>
+                  </motion.button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
@@ -138,7 +189,8 @@ const RecordsPage = () => {
           <div className="grid grid-cols-7 gap-1">
             {daysInMonth.map((day, index) => {
               const dateStr = format(day, 'yyyy-MM-dd');
-              const hasTraining = trainingDates.has(dateStr);
+              const hasTraining = allTrainingDates.has(dateStr);
+              const hasFilteredTraining = trainingDates.has(dateStr);
               const isToday = isSameDay(day, new Date());
               const isSelected = selectedDate === dateStr;
               const isCurrentMonth = isSameMonth(day, currentMonth);
@@ -164,7 +216,7 @@ const RecordsPage = () => {
                   {hasTraining && isCurrentMonth && (
                     <div
                       className={`absolute bottom-1.5 w-1.5 h-1.5 rounded-full ${
-                        isSelected ? 'bg-white' : 'bg-secondary-500'
+                        isSelected ? 'bg-white' : hasFilteredTraining ? 'bg-secondary-500' : 'bg-neutral-300'
                       }`}
                     />
                   )}
