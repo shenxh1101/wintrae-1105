@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Trophy, TrendingUp, Target, Flame, Clock, Star, 
@@ -32,20 +33,39 @@ const goalIconMap: Record<string, any> = {
 
 const WeeklyReviewPage = () => {
   const navigate = useNavigate();
+  const [weekOffset, setWeekOffset] = useState(0);
   const { getCurrentPet, getGoalsForPet, getMemberById, familyMembers } = usePetStore();
-  const { courses, getRecordsForPet, getWeeklyStats, getWeeklySuggestions, getNextWeekPlan, getMemberWeeklyStats, calculateGoalProgress } = useTrainingStore();
+  const { courses, getWeeklyRecords, getWeeklyStats, getWeeklySuggestions, getNextWeekPlan, getMemberWeeklyStats, calculateGoalProgress, getFourWeekTrend } = useTrainingStore();
   
   const currentPet = getCurrentPet();
   const petId = currentPet?.id || '';
-  const weeklyStats = currentPet ? getWeeklyStats(currentPet.id) : null;
-  const records = currentPet ? getRecordsForPet(currentPet.id) : [];
-  const suggestions = currentPet ? getWeeklySuggestions(currentPet.id) : [];
-  const nextWeekPlan = currentPet ? getNextWeekPlan(currentPet.id) : [];
+  const weeklyStats = currentPet ? getWeeklyStats(currentPet.id, weekOffset) : null;
+  const weeklyRecords = currentPet ? getWeeklyRecords(currentPet.id, weekOffset) : [];
+  const suggestions = currentPet ? getWeeklySuggestions(currentPet.id, weekOffset) : [];
+  const nextWeekPlan = currentPet && weekOffset === 0 ? getNextWeekPlan(currentPet.id) : [];
   const goals = currentPet ? getGoalsForPet(currentPet.id) : [];
-  const memberWeeklyStats = currentPet ? getMemberWeeklyStats(currentPet.id) : [];
+  const memberWeeklyStats = currentPet ? getMemberWeeklyStats(currentPet.id, weekOffset) : [];
+  const fourWeekTrend = currentPet ? getFourWeekTrend(currentPet.id) : [];
 
-  const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(new Date(), { weekStartsOn: 1 });
+  const weekStart = useMemo(() => {
+    const start = startOfWeek(new Date(), { weekStartsOn: 1 });
+    return subWeeks(start, weekOffset);
+  }, [weekOffset]);
+  
+  const weekEnd = useMemo(() => {
+    const end = endOfWeek(new Date(), { weekStartsOn: 1 });
+    return subWeeks(end, weekOffset);
+  }, [weekOffset]);
+
+  const handlePrevWeek = () => {
+    setWeekOffset(prev => prev + 1);
+  };
+
+  const handleNextWeek = () => {
+    if (weekOffset > 0) {
+      setWeekOffset(prev => prev - 1);
+    }
+  };
 
   const score = weeklyStats ? Math.min(100, Math.round(
     (weeklyStats.completionRate * 0.3) +
@@ -62,9 +82,9 @@ const WeeklyReviewPage = () => {
 
   const scoreLevel = getScoreLevel(score);
 
-  const courseStats = () => {
+  const topCourses = useMemo(() => {
     const courseCount: Record<string, number> = {};
-    records.forEach(r => {
+    weeklyRecords.forEach(r => {
       courseCount[r.courseId] = (courseCount[r.courseId] || 0) + 1;
     });
     
@@ -76,9 +96,7 @@ const WeeklyReviewPage = () => {
       .filter(item => item.course)
       .sort((a, b) => b.count - a.count)
       .slice(0, 3);
-  };
-
-  const topCourses = courseStats();
+  }, [weeklyRecords, courses]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -158,16 +176,23 @@ const WeeklyReviewPage = () => {
         </div>
 
         <div className="flex items-center justify-center gap-4 py-2">
-          <button className="p-1">
+          <button 
+            onClick={handlePrevWeek}
+            className="p-1 active:scale-90 transition-transform"
+          >
             <ChevronLeft size={20} />
           </button>
           <div className="text-center">
             <p className="font-bold">
               {format(weekStart, 'M月d日', { locale: zhCN })} - {format(weekEnd, 'M月d日', { locale: zhCN })}
             </p>
-            <p className="text-sm text-white/70">本周训练总结</p>
+            <p className="text-sm text-white/70">{weekOffset === 0 ? '本周训练总结' : `第${weekOffset + 1}周前`}</p>
           </div>
-          <button className="p-1 opacity-40">
+          <button 
+            onClick={handleNextWeek}
+            className={`p-1 transition-all ${weekOffset <= 0 ? 'opacity-40 cursor-not-allowed' : 'active:scale-90'}`}
+            disabled={weekOffset <= 0}
+          >
             <ChevronRight size={20} />
           </button>
         </div>
@@ -175,8 +200,10 @@ const WeeklyReviewPage = () => {
 
       <div className="px-4 pb-6">
         <motion.div
+          key={`score-${weekOffset}`}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
           className="bg-white rounded-3xl p-6 shadow-float text-center"
         >
           <div className="relative w-32 h-32 mx-auto mb-4">
@@ -229,9 +256,10 @@ const WeeklyReviewPage = () => {
         </motion.div>
 
         <motion.div
+          key={`stats-${weekOffset}`}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.1, duration: 0.4 }}
           className="grid grid-cols-4 gap-2 mt-6"
         >
           <div className="bg-white/90 backdrop-blur rounded-2xl p-3 text-center">
@@ -268,15 +296,16 @@ const WeeklyReviewPage = () => {
 
         {goals.length > 0 && (
           <motion.div
+            key={`goals-${weekOffset}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.25 }}
+            transition={{ delay: 0.15, duration: 0.4 }}
             className="bg-white rounded-2xl p-5 mt-6 shadow-card"
           >
             <h3 className="font-bold text-neutral-800 mb-4">训练目标完成情况</h3>
             <div className="space-y-4">
               {goals.map((goal, index) => {
-                const currentValue = calculateGoalProgress(currentPet.id, goal);
+                const currentValue = calculateGoalProgress(currentPet.id, goal, weekOffset);
                 const progress = Math.min(100, Math.round((currentValue / Math.max(1, goal.targetValue)) * 100));
                 const GoalIcon = goalIconMap[goal.goalType] || Target;
                 return (
@@ -326,14 +355,17 @@ const WeeklyReviewPage = () => {
           </motion.div>
         )}
 
-        {topCourses.length > 0 && (
+        {topCourses.length > 0 ? (
           <motion.div
+            key={`topcourses-${weekOffset}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.2, duration: 0.4 }}
             className="bg-white rounded-2xl p-5 mt-6 shadow-card"
           >
-            <h3 className="font-bold text-neutral-800 mb-4">本周训练TOP3</h3>
+            <h3 className="font-bold text-neutral-800 mb-4">
+              {weekOffset === 0 ? '本周' : `第${weekOffset + 1}周前`}训练TOP3
+            </h3>
             <div className="space-y-3">
               {topCourses.map((item, index) => (
                 <div key={item.course?.id} className="flex items-center gap-3">
@@ -356,16 +388,132 @@ const WeeklyReviewPage = () => {
               ))}
             </div>
           </motion.div>
+        ) : (
+          <motion.div
+            key={`topcourses-empty-${weekOffset}`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.4 }}
+            className="bg-white rounded-2xl p-5 mt-6 shadow-card"
+          >
+            <h3 className="font-bold text-neutral-800 mb-4">
+              {weekOffset === 0 ? '本周' : `第${weekOffset + 1}周前`}训练TOP3
+            </h3>
+            <div className="text-center py-6">
+              <div className="w-16 h-16 mx-auto bg-neutral-100 rounded-full flex items-center justify-center mb-3">
+                <Trophy size={28} className="text-neutral-300" />
+              </div>
+              <p className="text-neutral-500 mb-1">还没有训练记录</p>
+              <p className="text-neutral-400 text-sm">开始训练后这里会显示热门课程</p>
+            </div>
+          </motion.div>
+        )}
+
+        {fourWeekTrend.length > 0 && (
+          <motion.div
+            key={`trend-${weekOffset}`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.32 }}
+            className="bg-white rounded-2xl p-5 mt-6 shadow-card"
+          >
+            <h3 className="font-bold text-neutral-800 mb-4">📈 近四周趋势</h3>
+            <div className="space-y-5">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-neutral-700">训练次数</p>
+                  <p className="text-xs text-neutral-400">单位：次</p>
+                </div>
+                <div className="flex items-end justify-around h-24 gap-2">
+                  {fourWeekTrend.map((item, index) => {
+                    const maxValue = Math.max(...fourWeekTrend.map(t => t.totalTrainings), 1);
+                    const heightPercent = (item.totalTrainings / maxValue) * 100;
+                    const opacity = 1 - index * 0.2;
+                    return (
+                      <div key={index} className="flex-1 flex flex-col items-center">
+                        <span className="text-xs font-semibold text-neutral-600 mb-1">{item.totalTrainings}</span>
+                        <div 
+                          className="w-full rounded-t-lg bg-gradient-to-t from-primary-500 to-primary-400 transition-all duration-500"
+                          style={{ 
+                            height: `${Math.max(heightPercent, 4)}%`,
+                            opacity: opacity
+                          }}
+                        />
+                        <span className="text-xs text-neutral-400 mt-2">{item.weekLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-neutral-700">平均评分</p>
+                  <p className="text-xs text-neutral-400">单位：分</p>
+                </div>
+                <div className="flex items-end justify-around h-24 gap-2">
+                  {fourWeekTrend.map((item, index) => {
+                    const maxValue = 5;
+                    const heightPercent = (item.avgRating / maxValue) * 100;
+                    const opacity = 1 - index * 0.2;
+                    return (
+                      <div key={index} className="flex-1 flex flex-col items-center">
+                        <span className="text-xs font-semibold text-neutral-600 mb-1">{item.avgRating.toFixed(1)}</span>
+                        <div 
+                          className="w-full rounded-t-lg bg-gradient-to-t from-yellow-500 to-yellow-400 transition-all duration-500"
+                          style={{ 
+                            height: `${Math.max(heightPercent, 4)}%`,
+                            opacity: opacity
+                          }}
+                        />
+                        <span className="text-xs text-neutral-400 mt-2">{item.weekLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-neutral-700">异常行为</p>
+                  <p className="text-xs text-neutral-400">单位：条</p>
+                </div>
+                <div className="flex items-end justify-around h-24 gap-2">
+                  {fourWeekTrend.map((item, index) => {
+                    const maxValue = Math.max(...fourWeekTrend.map(t => t.abnormalCount), 1);
+                    const heightPercent = (item.abnormalCount / maxValue) * 100;
+                    const opacity = 1 - index * 0.2;
+                    return (
+                      <div key={index} className="flex-1 flex flex-col items-center">
+                        <span className="text-xs font-semibold text-neutral-600 mb-1">{item.abnormalCount}</span>
+                        <div 
+                          className="w-full rounded-t-lg bg-gradient-to-t from-orange-500 to-orange-400 transition-all duration-500"
+                          style={{ 
+                            height: `${Math.max(heightPercent, 4)}%`,
+                            opacity: opacity
+                          }}
+                        />
+                        <span className="text-xs text-neutral-400 mt-2">{item.weekLabel}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </motion.div>
         )}
 
         {memberStatsWithInfo.length > 0 ? (
           <motion.div
+            key={`members-${weekOffset}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
+            transition={{ delay: 0.25, duration: 0.4 }}
             className="bg-white rounded-2xl p-5 mt-6 shadow-card"
           >
-            <h3 className="font-bold text-neutral-800 mb-4">🏆 家庭成员本周贡献</h3>
+            <h3 className="font-bold text-neutral-800 mb-4">
+              🏆 家庭成员{weekOffset === 0 ? '本周' : `第${weekOffset + 1}周前`}贡献
+            </h3>
             <div className="space-y-4">
               {memberStatsWithInfo.map((member, index) => {
                 const progress = maxTrainings > 0
@@ -377,7 +525,9 @@ const WeeklyReviewPage = () => {
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.35 + index * 0.1 }}
-                    className="bg-neutral-50 rounded-2xl p-4"
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate(`/family/${member.memberId}`)}
+                    className="bg-neutral-50 rounded-2xl p-4 cursor-pointer hover:bg-neutral-100 transition-colors"
                   >
                     <div className="flex items-start gap-3 mb-3">
                       <div
@@ -431,12 +581,15 @@ const WeeklyReviewPage = () => {
           </motion.div>
         ) : (
           <motion.div
+            key={`members-empty-${weekOffset}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
+            transition={{ delay: 0.25, duration: 0.4 }}
             className="bg-white rounded-2xl p-5 mt-6 shadow-card"
           >
-            <h3 className="font-bold text-neutral-800 mb-4">🏆 家庭成员本周贡献</h3>
+            <h3 className="font-bold text-neutral-800 mb-4">
+              🏆 家庭成员{weekOffset === 0 ? '本周' : `第${weekOffset + 1}周前`}贡献
+            </h3>
             <div className="text-center py-6">
               <div className="w-16 h-16 mx-auto bg-neutral-100 rounded-full flex items-center justify-center mb-3">
                 <Users size={28} className="text-neutral-300" />
@@ -449,12 +602,15 @@ const WeeklyReviewPage = () => {
 
         {suggestions.length > 0 && (
           <motion.div
+            key={`suggestions-${weekOffset}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+            transition={{ delay: 0.3, duration: 0.4 }}
             className="mt-6"
           >
-            <h3 className="font-bold text-white text-lg mb-3">训练建议</h3>
+            <h3 className="font-bold text-white text-lg mb-3">
+              {weekOffset === 0 ? '本周' : `第${weekOffset + 1}周前`}训练建议
+            </h3>
             <div className="space-y-3">
               {suggestions.map((suggestion, index) => {
                 const Icon = iconMap[suggestion.icon] || Lightbulb;

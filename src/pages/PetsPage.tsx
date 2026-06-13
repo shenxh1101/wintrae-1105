@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Scale, Syringe, Bug, Edit2, Trash2, ChevronRight, ChevronLeft,
-  Calendar, Target, Award, Users, X, Check, Star, Activity, PawPrint, BookOpen
+  Calendar, Target, Award, Users, X, Check, Star, Activity, PawPrint, BookOpen, Camera
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, isWithinInterval } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -485,6 +485,25 @@ const PetsPage = () => {
                   </div>
                 </div>
               </div>
+
+              <motion.div
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate('/photo-album')}
+                className="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-2xl p-5 shadow-card cursor-pointer hover:shadow-md transition-shadow border border-primary-100"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                      <Camera size={20} className="text-primary-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-neutral-800">📸 成长相册</h3>
+                      <p className="text-sm text-neutral-500">记录训练中的可爱瞬间</p>
+                    </div>
+                  </div>
+                  <ChevronRight size={20} className="text-neutral-400" />
+                </div>
+              </motion.div>
 
               <motion.div
                 whileTap={{ scale: 0.98 }}

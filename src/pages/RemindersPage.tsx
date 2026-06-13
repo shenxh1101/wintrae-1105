@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react';
-import { Plus, Bell, Syringe, Bug, Calendar, ChevronRight, Trash2, X, Check } from 'lucide-react';
+import { Plus, Bell, Syringe, Bug, Calendar, ChevronRight, Trash2, X, Check, Scale, Target, Heart, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useReminderStore } from '../stores/useReminderStore';
 import { usePetStore } from '../stores/usePetStore';
 import Header from '../components/Header';
 import { motion, AnimatePresence } from 'framer-motion';
+import { format, parseISO } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
+import type { HealthTodo } from '../stores/useReminderStore';
 
 type FilterType = 'all' | 'training' | 'vaccine' | 'deworm' | 'custom';
 type ReminderType = 'training' | 'vaccine' | 'deworm' | 'custom';
 type RepeatType = 'daily' | 'weekly' | 'monthly' | 'once';
 
 const RemindersPage = () => {
-  const { reminders, toggleReminder, deleteReminder, addReminder } = useReminderStore();
+  const { reminders, toggleReminder, deleteReminder, addReminder, getHealthTodos } = useReminderStore();
   const { pets, getCurrentPet } = usePetStore();
   const currentPet = getCurrentPet();
+  const healthTodos = currentPet ? getHealthTodos(currentPet.id) : [];
   
   const [filter, setFilter] = useState<FilterType>('all');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -129,6 +133,35 @@ const RemindersPage = () => {
     }
   };
 
+  const getTodoIcon = (type: HealthTodo['type']) => {
+    switch (type) {
+      case 'vaccine': return Syringe;
+      case 'deworm': return Bug;
+      case 'weight': return Scale;
+      case 'goal': return Target;
+      default: return Heart;
+    }
+  };
+
+  const getTodoColor = (type: HealthTodo['type']) => {
+    switch (type) {
+      case 'vaccine': return { bg: 'bg-blue-100', text: 'text-blue-600', gradient: 'from-blue-50 to-blue-100' };
+      case 'deworm': return { bg: 'bg-green-100', text: 'text-green-600', gradient: 'from-green-50 to-green-100' };
+      case 'weight': return { bg: 'bg-purple-100', text: 'text-purple-600', gradient: 'from-purple-50 to-purple-100' };
+      case 'goal': return { bg: 'bg-primary-100', text: 'text-primary-600', gradient: 'from-primary-50 to-secondary-50' };
+      default: return { bg: 'bg-neutral-100', text: 'text-neutral-600', gradient: 'from-neutral-50 to-neutral-100' };
+    }
+  };
+
+  const getPriorityStyle = (priority: HealthTodo['priority']) => {
+    switch (priority) {
+      case 'high': return { bg: 'bg-red-500', text: 'text-red-600', label: '紧急', dot: 'bg-red-500', lightBg: 'bg-red-50' };
+      case 'medium': return { bg: 'bg-orange-500', text: 'text-orange-600', label: '待办', dot: 'bg-orange-500', lightBg: 'bg-orange-50' };
+      case 'low': return { bg: 'bg-green-500', text: 'text-green-600', label: '计划', dot: 'bg-green-500', lightBg: 'bg-green-50' };
+      default: return { bg: 'bg-neutral-500', text: 'text-neutral-600', label: '待办', dot: 'bg-neutral-400', lightBg: 'bg-neutral-50' };
+    }
+  };
+
   return (
     <div className="pb-6">
       <Header 
@@ -184,6 +217,65 @@ const RemindersPage = () => {
             })}
           </div>
         </div>
+
+        {/* 待办事项 */}
+        {healthTodos.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="mb-6"
+          >
+            <h3 className="text-lg font-bold text-neutral-800 mb-3 flex items-center gap-2">
+              <Heart size={18} className="text-red-400" />
+              待办事项
+              <span className="text-xs font-normal text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full">
+                {healthTodos.length} 项
+              </span>
+            </h3>
+            <div className="space-y-3">
+              <AnimatePresence>
+                {healthTodos.map((todo, index) => {
+                  const TodoIcon = getTodoIcon(todo.type);
+                  const typeColor = getTodoColor(todo.type);
+                  const priorityStyle = getPriorityStyle(todo.priority);
+                  return (
+                    <motion.div
+                      key={todo.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.3, delay: 0.1 + index * 0.05 }}
+                      className={`bg-gradient-to-r ${typeColor.gradient} rounded-2xl p-4 border border-white/60 shadow-sm`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`w-12 h-12 rounded-xl bg-white/80 flex items-center justify-center flex-shrink-0 shadow-sm`}>
+                          <TodoIcon size={24} className={typeColor.text} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-semibold text-neutral-800">{todo.title}</h4>
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${priorityStyle.lightBg} ${priorityStyle.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${priorityStyle.dot}`} />
+                              {priorityStyle.label}
+                            </span>
+                          </div>
+                          <p className="text-sm text-neutral-600 mt-1">{todo.description}</p>
+                          {todo.dueDate && (
+                            <p className="text-xs text-neutral-500 mt-2 flex items-center gap-1">
+                              <Calendar size={12} />
+                              到期：{format(parseISO(todo.dueDate), 'M月d日', { locale: zhCN })}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
 
         {/* 提醒列表 */}
         <div>

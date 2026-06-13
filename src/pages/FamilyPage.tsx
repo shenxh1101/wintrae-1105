@@ -168,7 +168,7 @@ const FamilyPage = () => {
                   >
                     <motion.div
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => setCurrentMember(member.id)}
+                      onClick={() => navigate(`/family/${member.id}`)}
                       className={`bg-white rounded-2xl p-4 shadow-card cursor-pointer transition-all relative overflow-hidden ${
                         isCurrent ? 'ring-2 ring-primary-400 ring-offset-2' : ''
                       }`}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Clock, Star, Gift, AlertTriangle, Camera, User, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, Star, Gift, AlertTriangle, Camera, User, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTrainingStore } from '../stores/useTrainingStore';
 import { usePetStore } from '../stores/usePetStore';
@@ -197,10 +197,17 @@ const RecordDetailPage = () => {
             </div>
             <h3 className="font-bold text-neutral-800">训练照片记录</h3>
             {record.photos && record.photos.length > 0 && (
-              <span className="ml-auto text-xs text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded-full">
+              <span className="text-xs text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded-full">
                 共{record.photos.length}张
               </span>
             )}
+            <button
+              onClick={() => navigate('/photo-album')}
+              className="ml-auto text-xs text-primary-500 font-medium flex items-center gap-0.5 hover:text-primary-600 transition-colors"
+            >
+              查看相册
+              <ChevronRight size={14} />
+            </button>
           </div>
 
           {record.photos && record.photos.length > 0 ? (

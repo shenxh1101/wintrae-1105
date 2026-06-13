@@ -1,27 +1,33 @@
 import { useNavigate } from 'react-router-dom';
 import { 
-  BookOpen, Calendar, PawPrint, TrendingUp, Flame, Target, Clock, ChevronRight, Sparkles, Star, Award
+  BookOpen, Calendar, PawPrint, TrendingUp, Flame, Target, Clock, ChevronRight, Sparkles, Star, Award,
+  Syringe, Bug, Scale, Heart, CheckCircle, AlertTriangle
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, parseISO, formatDistanceToNowStrict } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { usePetStore } from '../stores/usePetStore';
 import { useTrainingStore } from '../stores/useTrainingStore';
+import { useReminderStore } from '../stores/useReminderStore';
 import PetCard from '../components/PetCard';
 import CourseCard from '../components/CourseCard';
 import ProgressBar from '../components/ProgressBar';
 import { motion } from 'framer-motion';
 import type { TrainingGoal } from '../types';
+import type { HealthTodo } from '../stores/useReminderStore';
 
 const HomePage = () => {
   const navigate = useNavigate();
   const { pets, currentPetId, setCurrentPet, getCurrentPet, getGoalsForPet } = usePetStore();
   const { courses, getRecordsForPet, getWeeklyStats, getRecordsForPetByDate, getWeeklySuggestions, calculateGoalProgress } = useTrainingStore();
+  const { getHealthTodos } = useReminderStore();
   const currentPet = getCurrentPet();
   const today = format(new Date(), 'yyyy-MM-dd');
   
   const todayRecords = currentPet ? getRecordsForPetByDate(currentPet.id, today) : [];
   const weeklyStats = currentPet ? getWeeklyStats(currentPet.id) : null;
   const petGoals = currentPet ? getGoalsForPet(currentPet.id) : [];
+  const healthTodos = currentPet ? getHealthTodos(currentPet.id) : [];
+  const displayedTodos = healthTodos.slice(0, 3);
   
   const todayCourseIds = new Set(todayRecords.map(r => r.courseId));
   const todayTarget = 3;
@@ -43,6 +49,35 @@ const HomePage = () => {
     if (hour < 14) return '中午好';
     if (hour < 18) return '下午好';
     return '晚上好';
+  };
+
+  const getTodoIcon = (type: HealthTodo['type']) => {
+    switch (type) {
+      case 'vaccine': return Syringe;
+      case 'deworm': return Bug;
+      case 'weight': return Scale;
+      case 'goal': return Target;
+      default: return Heart;
+    }
+  };
+
+  const getTodoColor = (type: HealthTodo['type']) => {
+    switch (type) {
+      case 'vaccine': return { bg: 'bg-blue-100', text: 'text-blue-600', border: 'border-blue-200' };
+      case 'deworm': return { bg: 'bg-green-100', text: 'text-green-600', border: 'border-green-200' };
+      case 'weight': return { bg: 'bg-purple-100', text: 'text-purple-600', border: 'border-purple-200' };
+      case 'goal': return { bg: 'bg-primary-100', text: 'text-primary-600', border: 'border-primary-200' };
+      default: return { bg: 'bg-neutral-100', text: 'text-neutral-600', border: 'border-neutral-200' };
+    }
+  };
+
+  const getPriorityStyle = (priority: HealthTodo['priority']) => {
+    switch (priority) {
+      case 'high': return { bg: 'bg-red-50', text: 'text-red-600', label: '紧急', dot: 'bg-red-500' };
+      case 'medium': return { bg: 'bg-orange-50', text: 'text-orange-600', label: '待办', dot: 'bg-orange-500' };
+      case 'low': return { bg: 'bg-green-50', text: 'text-green-600', label: '计划', dot: 'bg-green-500' };
+      default: return { bg: 'bg-neutral-50', text: 'text-neutral-600', label: '待办', dot: 'bg-neutral-400' };
+    }
   };
 
   const getGoalProgress = (petId: string, goal: TrainingGoal) => {
@@ -186,6 +221,77 @@ const HomePage = () => {
                 </div>
               )}
             </div>
+          </div>
+        </motion.div>
+
+        {/* 健康待办 */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.25 }}
+          className="mt-6"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-bold text-neutral-800 flex items-center gap-2">
+              <Heart size={18} className="text-red-400" />
+              健康待办
+            </h2>
+            {healthTodos.length > 0 && (
+              <button 
+                onClick={() => navigate('/reminders')}
+                className="flex items-center gap-1 text-sm text-primary-500 font-medium"
+              >
+                查看全部 <ChevronRight size={16} />
+              </button>
+            )}
+          </div>
+          
+          <div className="bg-white rounded-2xl p-5 shadow-card">
+            {displayedTodos.length > 0 ? (
+              <div className="space-y-3">
+                {displayedTodos.map((todo, index) => {
+                  const TodoIcon = getTodoIcon(todo.type);
+                  const typeColor = getTodoColor(todo.type);
+                  const priorityStyle = getPriorityStyle(todo.priority);
+                  return (
+                    <motion.div
+                      key={todo.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.25 + index * 0.05 }}
+                      className="flex items-start gap-3 p-3 bg-neutral-50 rounded-xl"
+                    >
+                      <div className={`w-10 h-10 rounded-xl ${typeColor.bg} flex items-center justify-center flex-shrink-0`}>
+                        <TodoIcon size={20} className={typeColor.text} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-neutral-800 text-sm">{todo.title}</p>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${priorityStyle.bg} ${priorityStyle.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${priorityStyle.dot}`} />
+                            {priorityStyle.label}
+                          </span>
+                        </div>
+                        <p className="text-xs text-neutral-500 mt-1">{todo.description}</p>
+                        {todo.dueDate && (
+                          <p className="text-xs text-neutral-400 mt-1">
+                            到期时间：{format(parseISO(todo.dueDate), 'M月d日', { locale: zhCN })}
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <div className="w-14 h-14 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-3">
+                  <CheckCircle size={28} className="text-green-500" />
+                </div>
+                <p className="text-neutral-600 font-medium">暂无待办，一切正常 ✓</p>
+                <p className="text-neutral-400 text-sm mt-1">宠物状态良好，继续保持</p>
+              </div>
+            )}
           </div>
         </motion.div>
 
